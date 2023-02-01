@@ -12,7 +12,7 @@ variable "DOCKER_ORG" {
   default = "mailu"
 }
 variable "DOCKER_PREFIX" {
-  default = ""
+  default = "mailu-"
 }
 variable "PINNED_MAILU_VERSION" {
   default = "local"
@@ -27,9 +27,7 @@ variable "MAILU_VERSION" {
 #-----------------------------------------------------------------------------------------
 group "default" {
   targets = [
-    "docs",
-    "setup",
-
+    
     "admin",
     "antispam",
     "front",
@@ -39,11 +37,11 @@ group "default" {
 
     "webmail",
 
-    "antivirus",
-    "fetchmail",
+#    "antivirus",
+#    "fetchmail",
     "resolver",
-    "traefik-certdumper",
-    "webdav"
+#    "traefik-certdumper",
+#    "webdav"
   ]
 }
 

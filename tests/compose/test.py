@@ -14,7 +14,8 @@ timeout=int(sys.argv[2])
 test_path="tests/compose/" + test_name + "/"
 compose_file=test_path + "docker-compose.yml"
 
-client = docker.APIClient(base_url='unix://var/run/docker.sock')
+# client = docker.APIClient(base_url='unix://var/run/docker.sock')
+client = docker.from_env()
 
 containers = []
 
