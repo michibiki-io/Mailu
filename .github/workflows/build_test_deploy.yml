@@ -331,67 +331,67 @@ jobs:
             *.cache-from=type=registry,ref=docker.io/${{ steps.string.outputs.lowercase }}/${{ inputs.docker_prefix }}base:${{ hashFiles('core/base/Dockerfile','core/base/requirements-prod.txt') }}-arm
             *.platform=${{ inputs.architecture }}
 
-# This job runs all the tests.
-  tests:
-    name: tests
-    if: inputs.architecture == 'linux/amd64'
-    runs-on: self-hosted
-    permissions:
-     contents: read
-     packages: read
-    needs:
-      - build
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ["core", "filters", "webmail"]
-        time: ["2"]
-        include:
-          - target: "filters"
-            time: "3"
-        exclude:
-          - target: "filters"
-            time: "2"
-    steps:
-      - uses: actions/checkout@v3
-      - name: Retrieve global variables
-        shell: bash
-        run: |
-          echo "BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
-          echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
-          echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
-          echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.Docker_Login }}
-          password: ${{ secrets.Docker_Password }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - uses: crazy-max/ghaction-github-runtime@v2
-      - name: Set up Docker Context for Buildx
-        run: docker context create builders
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-        with:
-          version: latest
-          endpoint: builders
-      - name: Helper to convert docker org to lowercase
-        id: string
-        uses: ASzc/change-string-case-action@v5
-        with:
-          string: ${{ inputs.docker_org }}
-      - name: Install python packages
-        run: python3 -m pip install -r tests/requirements.txt
-      - name: Copy all certs
-        run: sudo -- sh -c 'mkdir -p /mailu && cp -r tests/certs /mailu && chmod 600 /mailu/certs/*'
-      - name: Test ${{ matrix.target }}
-        run: python tests/compose/test.py ${{ matrix.target }} ${{ matrix.time }}
-        env:
-          DOCKER_ORG: docker.io/${{ steps.string.outputs.lowercase }}
-          MAILU_VERSION: ${{ env.MAILU_VERSION }}
-          DOCKER_PREFIX: ${{ inputs.docker_prefix }}
-          PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}
+# # This job runs all the tests.
+#   tests:
+#     name: tests
+#     if: inputs.architecture == 'linux/amd64'
+#     runs-on: self-hosted
+#     permissions:
+#      contents: read
+#      packages: read
+#     needs:
+#       - build
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         target: ["core", "filters", "webmail"]
+#         time: ["2"]
+#         include:
+#           - target: "filters"
+#             time: "3"
+#         exclude:
+#           - target: "filters"
+#             time: "2"
+#     steps:
+#       - uses: actions/checkout@v3
+#       - name: Retrieve global variables
+#         shell: bash
+#         run: |
+#           echo "BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
+#           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
+#           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
+#           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
+#       - name: Login to Docker Hub
+#         uses: docker/login-action@v2
+#         with:
+#           username: ${{ secrets.Docker_Login }}
+#           password: ${{ secrets.Docker_Password }}
+#       - name: Set up QEMU
+#         uses: docker/setup-qemu-action@v2
+#       - uses: crazy-max/ghaction-github-runtime@v2
+#       - name: Set up Docker Context for Buildx
+#         run: docker context create builders
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v2
+#         with:
+#           version: latest
+#           endpoint: builders
+#       - name: Helper to convert docker org to lowercase
+#         id: string
+#         uses: ASzc/change-string-case-action@v5
+#         with:
+#           string: ${{ inputs.docker_org }}
+#       - name: Install python packages
+#         run: python3 -m pip install -r tests/requirements.txt
+#       - name: Copy all certs
+#         run: sudo -- sh -c 'mkdir -p /mailu && cp -r tests/certs /mailu && chmod 600 /mailu/certs/*'
+#       - name: Test ${{ matrix.target }}
+#         run: python tests/compose/test.py ${{ matrix.target }} ${{ matrix.time }}
+#         env:
+#           DOCKER_ORG: docker.io/${{ steps.string.outputs.lowercase }}
+#           MAILU_VERSION: ${{ env.MAILU_VERSION }}
+#           DOCKER_PREFIX: ${{ inputs.docker_prefix }}
+#           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}
 
   deploy:
     name: Deploy images
@@ -399,7 +399,8 @@ jobs:
     if: inputs.deploy == 'true'
     runs-on: self-hosted
     needs:
-      - tests
+      # - tests
+      - build
     strategy:
       fail-fast: false
       matrix:

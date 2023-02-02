@@ -14,8 +14,19 @@ timeout=int(sys.argv[2])
 test_path="tests/compose/" + test_name + "/"
 compose_file=test_path + "docker-compose.yml"
 
-# client = docker.APIClient(base_url='unix://var/run/docker.sock')
-client = docker.from_env()
+client = None
+dockerUrl = os.getenv("DOCKER_HOST", "unix://var/run/docker.sock'")
+
+if dockerUrl.endswith(":2376"):
+    tls_config = docker.tls.TLSConfig(
+        ca_cert=os.getenv("DOCKER_CERT_PATH", "/certs/client") + "/ca.pem",
+        client_cert=(
+            os.getenv("DOCKER_CERT_PATH", "/certs/client") + "/cert.pem", 
+            os.getenv("DOCKER_CERT_PATH", "/certs/client") + "/key.pem"),
+        verify=True)
+    client = docker.APIClient(base_url=dockerUrl, tls=tls_config)
+else:
+    client = docker.APIClient(base_url=dockerUrl)
 
 containers = []
 
