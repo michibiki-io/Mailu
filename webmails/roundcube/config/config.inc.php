@@ -25,6 +25,7 @@ $config['smtp_pass'] = '%p';
 
 // Sieve script management
 $config['managesieve_host'] = '{{ FRONT_ADDRESS or "front" }}:14190';
+$config['managesieve_mbox_encoding'] = 'UTF8';
 
 // roundcube customization
 $config['product_name'] = 'Mailu Webmail';
@@ -47,6 +48,9 @@ $config['show_mailu_button'] = {{ 'true' if ADMIN and WEB_ADMIN else 'false' }};
 
 // set From header for DKIM signed message delivery reports
 $config['mdn_use_from'] = true;
+
+// zero quota is unlimited
+$config['quota_zero_as_unlimited'] = true;
 
 // includes
 {%- for inc in INCLUDES %}
