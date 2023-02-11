@@ -7,6 +7,7 @@ import flask_bootstrap
 from mailu import utils, debug, models, manage, configuration
 from gunicorn import glogging
 import logging
+import os
 
 import hmac
 
@@ -26,7 +27,7 @@ class Logger(glogging.Logger):
 def create_app_from_config(config):
     """ Create a new application based on the given configuration
     """
-    app = flask.Flask(__name__, static_folder='static', static_url_path='/static')
+    app = flask.Flask(__name__, static_folder='static', static_url_path=(os.getenv("WEB_ROOT", "")+'/static'))
     app.cli.add_command(manage.mailu)
 
     # Bootstrap is used for error display and flash messages
