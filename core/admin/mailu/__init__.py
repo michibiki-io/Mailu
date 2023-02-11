@@ -24,10 +24,42 @@ class Logger(glogging.Logger):
         logger = logging.getLogger("gunicorn.access")
         logger.addFilter(NoPingFilter())
 
+def create_prefix():
+
+    WEB_ROOT = os.getenv("WEB_ROOT")
+
+    if not WEB_ROOT is None:
+        # check endswith '/'
+        if WEB_ROOT.endswith('/'):
+            prefix_without_end_slash = WEB_ROOT.rstrip('/')
+        else:
+            prefix_without_end_slash = WEB_ROOT
+        # check startswith '/'
+        if WEB_ROOT.startswith('/'):
+            prefix = prefix_without_end_slash
+        else:
+            prefix = '/' + prefix_without_end_slash
+        return prefix
+
+    else:
+        return "/"
+
 def create_app_from_config(config):
     """ Create a new application based on the given configuration
     """
-    app = flask.Flask(__name__, static_folder='static', static_url_path=(os.getenv("WEB_ROOT", "")+'/static'))
+    prefix = create_prefix()
+
+    app = flask.Flask(__name__, static_folder='static', static_url_path=(create_prefix()+'static'))
+
+    if prefix != "/":
+        # define custom_rule class
+        class Custom_Rule(Rule):
+            def __init__(self, string, *args, **kwargs):
+                super(Custom_Rule, self).__init__(prefix + string, *args, **kwargs)
+
+        # set url_rule_class
+        app.url_rule_class = Custom_Rule
+
     app.cli.add_command(manage.mailu)
 
     # Bootstrap is used for error display and flash messages
