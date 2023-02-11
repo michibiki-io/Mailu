@@ -3,6 +3,7 @@
 
 import flask
 import flask_bootstrap
+from werkzeug.routing import Rule
 
 from mailu import utils, debug, models, manage, configuration
 from gunicorn import glogging
