@@ -48,6 +48,13 @@ DEFAULT_CONFIG = {
     'AUTH_RATELIMIT_EXEMPTION': '',
     'AUTH_RATELIMIT_EXEMPTION_LENGTH': 86400,
     'DISABLE_STATISTICS': False,
+    # OpenID Connect settings
+    'OIDC_ENABLED': False,
+    'OIDC_PROVIDER_INFO_URL': 'https://localhost/info',
+    'OIDC_CLIENT_ID': 'mailu',
+    'OIDC_CLIENT_SECRET': 'secret',
+    'OIDC_BUTTON_NAME': 'OpenID Connect',
+    'OIDC_REDIRECT_HOST': 'mail.mailu.io',
     # Mail settings
     'DMARC_RUA': None,
     'DMARC_RUF': None,
@@ -147,7 +154,7 @@ class ConfigManager:
             self.config['RATELIMIT_STORAGE_URL'] = f'redis://{self.config["REDIS_ADDRESS"]}/2'
 
         self.config['SESSION_STORAGE_URL'] = f'redis://{self.config["REDIS_ADDRESS"]}/3'
-        self.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+        self.config['SESSION_COOKIE_SAMESITE'] = 'Lax' if self.config['OIDC_ENABLED'] else 'Strict'
         self.config['SESSION_COOKIE_HTTPONLY'] = True
         if self.config['SESSION_COOKIE_SECURE'] is None:
             self.config['SESSION_COOKIE_SECURE'] = self.config['TLS_FLAVOR'] != 'notls'
