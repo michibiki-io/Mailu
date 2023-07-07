@@ -16,7 +16,7 @@ variable "DOCKER_ORG" {
   default = "ghcr.io/mailu"
 }
 variable "DOCKER_PREFIX" {
-  default = ""
+  default = "mailu-"
 }
 variable "PINNED_MAILU_VERSION" {
   default = "local"
@@ -37,22 +37,9 @@ variable "PINNED_LABEL_VERSION" {
 #-----------------------------------------------------------------------------------------
 group "default" {
   targets = [
-    "docs",
-    "setup",
-
     "admin",
-    "antispam",
-    "front",
-    "imap",
-    "oletools",
-    "smtp",
-
     "webmail",
-
-    "antivirus",
     "fetchmail",
-    "resolver",
-    "traefik-certdumper",
     "webdav"
   ]
 }
@@ -120,7 +107,7 @@ target "setup" {
   inherits = ["defaults"]
   context = "setup/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("setup")
 }
@@ -132,7 +119,7 @@ target "none" {
   inherits = ["defaults"]
   context = "core/none/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("none")
 }
@@ -141,8 +128,8 @@ target "admin" {
   inherits = ["defaults"]
   context = "core/admin/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
-    assets = "docker-image://${DOCKER_ORG}/assets:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
+    assets = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}assets:${MAILU_VERSION}"
   }
   tags = tag("admin")
 }
@@ -151,7 +138,7 @@ target "antispam" {
   inherits = ["defaults"]
   context = "core/rspamd/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("rspamd")
 }
@@ -160,7 +147,7 @@ target "front" {
   inherits = ["defaults"]
   context = "core/nginx/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("nginx")
 }
@@ -169,7 +156,7 @@ target "oletools" {
   inherits = ["defaults"]
   context = "core/oletools/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("oletools")
 }
@@ -178,7 +165,7 @@ target "imap" {
   inherits = ["defaults"]
   context = "core/dovecot/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("dovecot")
 }
@@ -187,7 +174,7 @@ target "smtp" {
   inherits = ["defaults"]
   context = "core/postfix/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("postfix")
 }
@@ -199,7 +186,7 @@ target "webmail" {
   inherits = ["defaults"]
   context = "webmails/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("webmail")
 }
@@ -211,7 +198,7 @@ target "antivirus" {
   inherits = ["defaults"]
   context = "optional/clamav/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("clamav")
 }
@@ -220,7 +207,7 @@ target "fetchmail" {
   inherits = ["defaults"]
   context = "optional/fetchmail/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("fetchmail")
 }
@@ -229,7 +216,7 @@ target "resolver" {
   inherits = ["defaults"]
   context = "optional/unbound/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("unbound")
 }
@@ -244,7 +231,7 @@ target "webdav" {
   inherits = ["defaults"]
   context = "optional/radicale/"
   contexts = {
-    base = "docker-image://${DOCKER_ORG}/base:${MAILU_VERSION}"
+    base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
   }
   tags = tag("radicale")
 }

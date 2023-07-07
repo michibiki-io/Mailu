@@ -69,6 +69,11 @@ on:
         description: 'The branch that triggered this workflow.'
         required: true
         type: string
+      test:
+        description: 'Do test or not.'
+        default: false
+        required: false
+        type: string
       deploy:
         description: Deploy to container registry. Happens for all branches but staging. Use string true or false.
         default: true
@@ -81,13 +86,14 @@ on:
         type: string
 env:
   HCL_FILE: ./tests/build-ci.hcl
+  DOCKER_PREFIX: mailu-
 
 jobs:
 # This job calculates what images must be build. It reads the build.hcl file and then outputs all targets (images) in it.
 # This is used by the next build job.
   targets:
     name: create targets
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
     steps:
@@ -109,7 +115,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ["base", "assets"]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
      contents: read
      packages: write
@@ -125,8 +131,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - uses: crazy-max/ghaction-github-runtime@v2
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
       - name: Helper to convert docker org to lowercase
         id: string
         uses: ASzc/change-string-case-action@v5
@@ -161,11 +173,11 @@ jobs:
               ; echo "$DOCKER_PASSW" |   docker login --username "$DOCKER_LOGIN" --password-stdin \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }} \
               || echo "builder does not exist" \
-              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use \
+              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use builders \
               ; /usr/bin/docker buildx bake --push \
               --file ./tests/build-ci.hcl \
-              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache \
-              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache,mode=max \
+              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache \
+              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache,mode=max \
               --set *.platform=${{ env.ARCH }} ${{ matrix.target }} \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }}
       - name: cleanup docker buildx instance after failure of build step
@@ -235,11 +247,11 @@ jobs:
               ; echo "$DOCKER_PASSW2" |    docker login --username "$DOCKER_LOGIN2" --password-stdin \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }} \
               || echo "builder does not exist" \
-              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use \
+              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use builders \
               ; /usr/bin/docker buildx bake --push \
               --file ./tests/build-ci.hcl \
-              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache-arm \
-              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache-arm,mode=max \
+              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache-arm \
+              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache-arm,mode=max \
               --set *.platform=${{ env.ARCH }} ${{ matrix.target }} \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }}
       - name: cleanup docker buildx instance after failure of build step
@@ -261,7 +273,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.targets.outputs.matrix) }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
      contents: read
      packages: write
@@ -277,8 +289,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - uses: crazy-max/ghaction-github-runtime@v2
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
       - name: Helper to convert docker org to lowercase
         id: string
         uses: ASzc/change-string-case-action@v5
@@ -313,11 +331,11 @@ jobs:
               ; echo "$DOCKER_PASSW" |   docker login --username "$DOCKER_LOGIN" --password-stdin \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }} \
               || echo "builder does not exist" \
-              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use \
+              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use builders \
               ; /usr/bin/docker buildx bake --push \
               --file ./tests/build-ci.hcl \
-              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache \
-              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache,mode=max \
+              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache \
+              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache,mode=max \
               --set *.platform=${{ env.ARCH }} ${{ matrix.target }} \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }}
       - name: cleanup docker buildx instance after failure of build step
@@ -390,11 +408,11 @@ jobs:
               ; echo "$DOCKER_PASSW2" |    docker login --username "$DOCKER_LOGIN2" --password-stdin \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }} \
               || echo "builder does not exist" \
-              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use \
+              ; /usr/bin/docker buildx create --name builder-${{ env.BUILDER }} --driver docker-container --use builders \
               ; /usr/bin/docker buildx bake --push \
               --file ./tests/build-ci.hcl \
-              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache-arm \
-              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}:buildcache-arm,mode=max \
+              --set *.cache-from=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache-arm \
+              --set *.cache-to=type=registry,ref=ghcr.io/${{ steps.string.outputs.lowercase }}/${{ env.DOCKER_PREFIX }}${{ matrix.target }}:buildcache-arm,mode=max \
               --set *.platform=${{ env.ARCH }} ${{ matrix.target }} \
               ; /usr/bin/docker buildx rm builder-${{ env.BUILDER }}
       - name: cleanup docker buildx instance after failure of build step
@@ -408,8 +426,8 @@ jobs:
 # This job runs all the tests.
   tests:
     name: tests
-    if: contains(inputs.architecture, 'linux/amd64')
-    runs-on: ubuntu-latest
+    if: contains(inputs.architecture, 'linux/amd64') && inputs.test == 'true'
+    runs-on: self-hosted
     permissions:
      contents: read
      packages: read
@@ -438,8 +456,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - uses: crazy-max/ghaction-github-runtime@v2
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
@@ -465,8 +489,8 @@ jobs:
   deploy:
     name: Deploy images
     # Deploying is not required for staging
-    if: inputs.deploy == 'true'
-    runs-on: ubuntu-latest
+    if: always() && inputs.deploy == 'true' && !contains(needs.*.result, 'failure')
+    runs-on: self-hosted
     needs:
       - build
       - build-arm
@@ -474,7 +498,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ["setup", "docs", "fetchmail", "webmail", "admin", "traefik-certdumper", "radicale", "clamav", "rspamd", "oletools", "postfix", "dovecot", "unbound", "nginx"]
+        target: ["mailu-admin"]
     steps:
       - uses: actions/checkout@v3
       - name: Retrieve global variables
@@ -487,8 +511,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - uses: crazy-max/ghaction-github-runtime@v2
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
@@ -535,7 +565,7 @@ jobs:
 #This job creates a tagged release. A tag is created for the pinned version x.y.z. The GH release refers to this tag.
   tag-release:
     if: inputs.release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs:
       - deploy
     steps:
