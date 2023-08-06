@@ -41,39 +41,76 @@ class LimitWraperFactory(object):
     def is_subject_to_rate_limits(self, ip):
         return False if utils.is_exempt_from_ratelimits(ip) else not (self.storage.get(f'exempt-{ip}') > 0)
 
+    def is_subject_to_suspicious_country(self, ip, client_network=None):
+        if client_network is None:
+            client_network = utils.extract_network_from_ip(ip)
+        if (self.storage.get(f'suspicious-country-{client_network}') > 0):
+            return True
+        elif (self.storage.get(f'trustworthy-country-{client_network}') > 0):
+            return False
+        elif utils.is_suspicious_country_ip(client_network):
+            return True
+        else:
+            return False
+
     def exempt_ip_from_ratelimits(self, ip):
         self.storage.incr(f'exempt-{ip}', app.config["AUTH_RATELIMIT_EXEMPTION_LENGTH"], True)
 
+    def suspicious_country_ip_ratelimits(self, client_network):
+        self.storage.incr(f'suspicious-country-{client_network}', app.config["GEOIP_SUSPICIOUS_COUNTRY_BLOCK_LENGTH"], True)
+
+    def trustworthy_country_ip_ratelimits(self, client_network):
+        self.storage.incr(f'trustworthy-country-{client_network}', app.config["GEOIP_TRUSTWORTHY_COUNTRY_EXEMPTION_LENGTH"], True)
+
     def should_rate_limit_ip(self, ip):
-        limiter = self.get_limiter(app.config["AUTH_RATELIMIT_IP"], 'auth-ip')
         client_network = utils.extract_network_from_ip(ip)
-        is_rate_limited = self.is_subject_to_rate_limits(ip) and not limiter.test(client_network)
-        if is_rate_limited:
-            app.logger.warn(f'Authentication attempt from {ip} has been rate-limited.')
-        return is_rate_limited
+        if self.is_subject_to_suspicious_country(ip, client_network):
+            app.logger.warn(f'Authentication attempt from {ip} has been blocked because of access from suspicious countries.')
+            return True
+        else:
+            limiter = self.get_limiter(app.config["AUTH_RATELIMIT_IP"], 'auth-ip')
+            is_rate_limited = self.is_subject_to_rate_limits(ip) and not limiter.test(client_network)
+            if is_rate_limited:
+                app.logger.warn(f'Authentication attempt from {ip} has been rate-limited.')
+            return is_rate_limited
 
     def rate_limit_ip(self, ip, username=None):
-        limiter = self.get_limiter(app.config['AUTH_RATELIMIT_IP'], 'auth-ip')
         client_network = utils.extract_network_from_ip(ip)
+        if self.is_subject_to_suspicious_country(ip, client_network):
+            self.suspicious_country_ip_ratelimits(client_network)
+            return
+        else:
+            self.trustworthy_country_ip_ratelimits(client_network)
         if self.is_subject_to_rate_limits(ip):
             if username and self.storage.get(f'dedup-{client_network}-{username}') > 0:
                 return
+            limiter = self.get_limiter(app.config['AUTH_RATELIMIT_IP'], 'auth-ip')
             self.storage.incr(f'dedup-{client_network}-{username}', limits.parse(app.config['AUTH_RATELIMIT_IP']).GRANULARITY.seconds, True)
             limiter.hit(client_network)
 
     def should_rate_limit_user(self, username, ip, device_cookie=None, device_cookie_name=None):
-        limiter = self.get_limiter(app.config["AUTH_RATELIMIT_USER"], 'auth-user')
-        is_rate_limited = self.is_subject_to_rate_limits(ip) and not limiter.test(device_cookie if device_cookie_name == username else username)
-        if is_rate_limited:
-            app.logger.warn(f'Authentication attempt from {ip} for {username} has been rate-limited.')
-        return is_rate_limited
+        if self.is_subject_to_suspicious_country(ip, None):
+            app.logger.warn(f'Authentication attempt from {ip} has been blocked because of access from suspicious countries.')
+            return True
+        else:
+            limiter = self.get_limiter(app.config["AUTH_RATELIMIT_USER"], 'auth-user')
+            is_rate_limited = self.is_subject_to_rate_limits(ip) and not limiter.test(device_cookie if device_cookie_name == username else username)
+            if is_rate_limited:
+                app.logger.warn(f'Authentication attempt from {ip} for {username} has been rate-limited.')
+            return is_rate_limited
 
     def rate_limit_user(self, username, ip, device_cookie=None, device_cookie_name=None, password=''):
-        limiter = self.get_limiter(app.config["AUTH_RATELIMIT_USER"], 'auth-user')
+        client_network = utils.extract_network_from_ip(ip)
+        if self.is_subject_to_suspicious_country(ip, client_network):
+            self.suspicious_country_ip_ratelimits(client_network)
+            return
+        else:
+            self.trustworthy_country_ip_ratelimits(client_network)
         if self.is_subject_to_rate_limits(ip):
             truncated_password = hmac.new(bytearray(username, 'utf-8'), bytearray(password, 'utf-8'), 'sha256').hexdigest()[-6:]
             if password and (self.storage.get(f'dedup2-{username}-{truncated_password}') > 0):
                 return
+            limiter = self.get_limiter(app.config["AUTH_RATELIMIT_USER"], 'auth-user')
             self.storage.incr(f'dedup2-{username}-{truncated_password}', limits.parse(app.config['AUTH_RATELIMIT_USER']).GRANULARITY.seconds, True)
             limiter.hit(device_cookie if device_cookie_name == username else username)
             self.rate_limit_ip(ip, username)
