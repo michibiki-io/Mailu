@@ -29,6 +29,7 @@ import flask_migrate
 import flask_babel
 import ipaddress
 import redis
+import requests
 
 from flask import session as f_session
 
@@ -109,6 +110,27 @@ def is_ip_in_subnet(ip, subnets=[]):
     except:
         app.logger.debug(f'Unable to parse {subnets!r}, assuming {ip!r} is not in the set')
         return False
+    
+def is_suspicious_country_ip(ip):
+    if len(app.config['GEOIP_API_URL']) == 0 or\
+        len(app.config['GEOIP_SUSPICIOUS_COUNTRY_CODES']) == 0:
+        return False
+    try:
+        ip = ipaddress.ip_address(ip)
+        ip = str(ip)
+        apiUrl = app.config['GEOIP_API_URL']
+        if "{ip}" in apiUrl:
+            requestUrl = apiUrl.format(ip=ip)
+            res = requests.get(requestUrl,timeout=1)
+            if res.status_code == 200:
+                if res.text == app.config['GEOIP_API_UNKNOWN_COUNTRY_RESPONSE']:
+                    return app.config['GEOIP_ALLOW_ACCESS_FROM_UNKNOWN_COUNTRY']
+                elif res.text in app.config['GEOIP_SUSPICIOUS_COUNTRY_CODES']:
+                    return True
+    except Exception as e:
+        app.logger.info(f'Error while getting country code of {ip}')
+        return False
+    return False
 
 # Application translation
 babel = flask_babel.Babel()

@@ -48,6 +48,13 @@ DEFAULT_CONFIG = {
     'AUTH_RATELIMIT_EXEMPTION': '',
     'AUTH_RATELIMIT_EXEMPTION_LENGTH': 86400,
     'DISABLE_STATISTICS': False,
+    # Geoip block setting
+    'GEOIP_SUSPICIOUS_COUNTRY_BLOCK_LENGTH': 86400,
+    'GEOIP_TRUSTWORTHY_COUNTRY_EXEMPTION_LENGTH': 600,
+    'GEOIP_API_URL': '',
+    'GEOIP_API_UNKNOWN_COUNTRY_RESPONSE': 'nil',
+    'GEOIP_ALLOW_ACCESS_FROM_UNKNOWN_COUNTRY': False,
+    'GEOIP_SUSPICIOUS_COUNTRY_CODES': '',
     # OpenID Connect settings
     'OIDC_ENABLED': False,
     'OIDC_PROVIDER_INFO_URL': 'https://localhost/info',
@@ -166,6 +173,7 @@ class ConfigManager:
         self.config['AUTH_RATELIMIT_IP_V6_MASK'] = int(self.config['AUTH_RATELIMIT_IP_V6_MASK'])
         self.config['AUTH_RATELIMIT_EXEMPTION'] = set(ipaddress.ip_network(cidr, False) for cidr in (cidr.strip() for cidr in self.config['AUTH_RATELIMIT_EXEMPTION'].split(',')) if cidr)
         self.config['MESSAGE_RATELIMIT_EXEMPTION'] = set([s for s in self.config['MESSAGE_RATELIMIT_EXEMPTION'].lower().replace(' ', '').split(',') if s])
+        self.config['GEOIP_SUSPICIOUS_COUNTRY_CODES'] = set([s for s in self.config['GEOIP_SUSPICIOUS_COUNTRY_CODES'].upper().replace(' ', '').split(',') if s])
         hostnames = [host.strip() for host in self.config['HOSTNAMES'].split(',')]
         self.config['HOSTNAMES'] = ','.join(hostnames)
         self.config['HOSTNAME'] = hostnames[0]

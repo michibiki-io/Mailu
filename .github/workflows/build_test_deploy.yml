@@ -131,8 +131,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          endpoint: builders
       - name: Helper to convert docker org to lowercase
         id: string
         uses: ASzc/change-string-case-action@v6
@@ -283,8 +289,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          endpoint: builders
       - name: Helper to convert docker org to lowercase
         id: string
         uses: ASzc/change-string-case-action@v6
@@ -444,6 +456,10 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Container Registry
@@ -493,8 +509,14 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
+      - name: Set up Docker Context for Buildx
+        id: buildx-context
+        run: |
+          docker context create builders
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          endpoint: builders
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
