@@ -174,18 +174,25 @@ class OidcClient:
     def init_app(self, app):
         """ initialize the OpenID Connect client """
         self.app = app
-        self.client = Client(client_authn_method=CLIENT_AUTHN_METHOD)
-        self.client.provider_config(app.config['OIDC_PROVIDER_INFO_URL'])
-        self.extension_client = ExtensionClient(client_authn_method=CLIENT_AUTHN_METHOD)
-        self.extension_client.provider_config(app.config['OIDC_PROVIDER_INFO_URL'])
-        info = {
-            "client_id": app.config['OIDC_CLIENT_ID'],
-            "client_secret": app.config['OIDC_CLIENT_SECRET'],
-            "redirect_uris": [ f"https://{self.app.config['OIDC_REDIRECT_HOST']}/sso/login" ]
-        }
-        client_reg = RegistrationResponse(**info)
-        self.client.store_registration_info(client_reg)
-        self.extension_client.store_registration_info(client_reg)
+        try:
+            self.client = Client(client_authn_method=CLIENT_AUTHN_METHOD)
+            self.client.provider_config(app.config['OIDC_PROVIDER_INFO_URL'])
+            self.extension_client = ExtensionClient(client_authn_method=CLIENT_AUTHN_METHOD)
+            self.extension_client.provider_config(app.config['OIDC_PROVIDER_INFO_URL'])
+            info = {
+                "client_id": app.config['OIDC_CLIENT_ID'],
+                "client_secret": app.config['OIDC_CLIENT_SECRET'],
+                "redirect_uris": [ f"https://{self.app.config['OIDC_REDIRECT_HOST']}/sso/login" ]
+            }
+            client_reg = RegistrationResponse(**info)
+            self.client.store_registration_info(client_reg)
+            self.extension_client.store_registration_info(client_reg)
+        except Exception as e:
+            app.logger.warning(f'Error while initializing OIDC client, reason: {e}')
+            self.client = None
+            self.extension_client = None
+            self.registration_response = None
+            app.config['OIDC_ENABLED'] = False
 
     def get_redirect_url(self):
         """ returns the URL to redirect the user to the OpenID Provider """
