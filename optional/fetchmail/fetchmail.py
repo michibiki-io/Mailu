@@ -48,7 +48,7 @@ def fetchmail(fetchmailrc):
 
 def run(debug):
     try:
-        fetches = requests.get(f"http://{os.environ['ADMIN_ADDRESS']}/internal/fetch").json()
+        fetches = requests.get(f"http://{os.environ['ADMIN_ADDRESS']}:8080/internal/fetch").json()
         for fetch in fetches:
             fetchmailrc = ""
             options = "options antispam 501, 504, 550, 553, 554"
@@ -64,7 +64,7 @@ def run(debug):
                 username=escape_rc_string(fetch["username"]),
                 password=escape_rc_string(fetch["password"]),
                 options=options,
-                folders=folders,
+                folders='' if fetch['protocol'] == 'pop3' else folders,
                 lmtp='' if fetch['scan'] else 'lmtp',
             )
             if debug:
@@ -84,7 +84,7 @@ def run(debug):
                         user_info in error_message):
                     print(error_message)
             finally:
-                requests.post("http://{}/internal/fetch/{}".format(os.environ['ADMIN_ADDRESS'],fetch['id']),
+                requests.post("http://{}:8080/internal/fetch/{}".format(os.environ['ADMIN_ADDRESS'],fetch['id']),
                     json=error_message.split('\n')[0]
                 )
     except Exception:
