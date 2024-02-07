@@ -30,6 +30,7 @@ on:
       docker_org:
         description: 'The docker organisation where the images are pushed to. E.g. ghcr.io/mailu'
         required: true
+        default: 'ghcr.io/michibiki-io'
         type: string
       branch:
         description: 'The branch that triggered this workflow.'
@@ -64,6 +65,7 @@ on:
       docker_org:
         description: 'The docker organisation where the images are pushed to. E.g. ghcr.io/mailu'
         required: true
+        default: 'ghcr.io/michibiki-io'
         type: string
       branch:
         description: 'The branch that triggered this workflow.'
