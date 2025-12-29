@@ -170,6 +170,7 @@ class OidcClient:
         self.client = None
         self.extension_client = None
         self.registration_response = None
+        self.introspection_cache = {}
 
     def init_app(self, app):
         """ initialize the OpenID Connect client """
@@ -263,6 +264,16 @@ class OidcClient:
 
     def check_validity(self, token):
         """ checks if the token is still valid, if not, refreshes it and returns the new token """
+        access_token = token.access_token
+        if access_token:
+            cache_entry = self.introspection_cache.get(access_token)
+            if cache_entry:
+                now = time.time()
+                if cache_entry.get("expires_at", 0) > now:
+                    if cache_entry.get("active"):
+                        return token
+                    return self.refresh_token(token)
+                self.introspection_cache.pop(access_token, None)
         try:
             args = {
                 "client_id": self.extension_client.client_id,
@@ -271,6 +282,15 @@ class OidcClient:
                 "token_type_hint": "access_token"
             }
             response = self.extension_client.do_token_introspection(request_args=args, authn_method="client_secret_basic")
+            if 'active' in response and response['active'] is True:
+                ttl = app.config.get('OIDC_INTROSPECTION_CACHE_TTL', 0)
+                if ttl and access_token:
+                    self.introspection_cache[access_token] = {
+                        "active": True,
+                        "expires_at": time.time() + ttl,
+                    }
+            else:
+                self.introspection_cache.pop(access_token, None)
             if ('active' in response and response['active'] == False) or 'active' not in response:
                 return self.refresh_token(token)
         except:

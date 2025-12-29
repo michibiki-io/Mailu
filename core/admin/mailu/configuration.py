@@ -62,6 +62,7 @@ DEFAULT_CONFIG = {
     'OIDC_CLIENT_SECRET': 'secret',
     'OIDC_BUTTON_NAME': 'OpenID Connect',
     'OIDC_REDIRECT_HOST': 'mail.mailu.io',
+    'OIDC_INTROSPECTION_CACHE_TTL': 30,
     # Mail settings
     'DMARC_RUA': None,
     'DMARC_RUF': None,
