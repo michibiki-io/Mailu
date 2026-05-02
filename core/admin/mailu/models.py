@@ -754,8 +754,22 @@ class Alias(Base, Email):
     def resolve(cls, localpart, domain_name):
         """ find aliases matching email address localpart@domain_name """
 
+        # An alias is active if it is not explicitly disabled AND its owner
+        # (if any) is enabled. These two flags are independent: disabling the
+        # owner suspends delivery without touching alias.disabled, so
+        # re-enabling the owner restores delivery automatically.
+        owner_enabled = sqlalchemy.or_(
+            cls.owner_email == None,
+            sqlalchemy.exists().where(
+                sqlalchemy.and_(
+                    User.email == cls.owner_email,
+                    User.enabled == True
+                )
+            )
+        )
+
         alias_preserve_case = cls.query.filter(
-                sqlalchemy.and_(cls.domain_name == domain_name, cls.disabled == False,
+                sqlalchemy.and_(cls.domain_name == domain_name, cls.disabled == False, owner_enabled,
                     sqlalchemy.or_(
                         sqlalchemy.and_(
                             cls.wildcard == False,
@@ -770,7 +784,7 @@ class Alias(Base, Email):
 
         localpart_lower = localpart.lower() if localpart else None
         alias_lower_case = cls.query.filter(
-                sqlalchemy.and_(cls.domain_name == domain_name, cls.disabled == False,
+                sqlalchemy.and_(cls.domain_name == domain_name, cls.disabled == False, owner_enabled,
                     sqlalchemy.or_(
                         sqlalchemy.and_(
                             cls.wildcard == False,
@@ -797,20 +811,7 @@ class Alias(Base, Email):
         return None
 
 
-@event.listens_for(db.session, 'before_commit')
-def disable_aliases_on_user_deactivation(session):
-    """ Disable all anon aliases when a user account is deactivated """
-    # Check all modified/new user objects in the session
-    for obj in list(session.new) + list(session.dirty):
-        if isinstance(obj, User) and obj.enabled is False:
-            # Update all aliases owned by this user using raw SQL
-            # We use raw SQL to avoid triggering the computed email column
-            session.execute(
-                sqlalchemy.text(
-                    'UPDATE alias SET disabled=1 WHERE owner_email=:email'
-                ),
-                {'email': obj.email}
-            )
+# end of Alias class helpers
 
 
 class Token(Base):

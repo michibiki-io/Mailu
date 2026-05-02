@@ -49,8 +49,9 @@ def setup_user_with_aliases(app):
 class TestUserDeactivation:
     """Test alias behavior when user is deactivated (enabled = False)"""
 
-    def test_deactivation_disables_anonmail_aliases(self, app, setup_user_with_aliases):
-        """When a user is deactivated, their anonmail aliases should be disabled"""
+    def test_deactivation_stops_resolving_anonmail_aliases(self, app, setup_user_with_aliases):
+        """When a user is deactivated, their anonmail aliases should stop resolving,
+        but alias.disabled should remain unchanged (independent flag)."""
         user_email, alias_emails = setup_user_with_aliases()
 
         with app.app_context():
@@ -65,14 +66,16 @@ class TestUserDeactivation:
             user_obj.enabled = False
             models.db.session.commit()
 
-            # Verify all aliases are now disabled
+            # alias.disabled should remain False — the flags are independent
             for alias_email in alias_emails:
                 alias_obj = models.Alias.query.filter_by(email=alias_email).first()
                 assert alias_obj is not None
-                assert alias_obj.disabled is True, f"Alias {alias_email} should be disabled"
+                assert alias_obj.disabled is False, (
+                    f"Alias {alias_email}: alias.disabled should not be touched when owner is deactivated"
+                )
 
     def test_deactivation_only_affects_owned_aliases(self, app, setup_user_with_aliases):
-        """Deactivating a user should only disable their owned aliases"""
+        """Deactivating a user should only stop resolution of their owned aliases"""
         user1_email, aliases1_emails = setup_user_with_aliases()
 
         with app.app_context():
@@ -94,20 +97,23 @@ class TestUserDeactivation:
             models.db.session.add(alias2)
             models.db.session.commit()
             alias2_email = alias2.email
+            alias2_localpart = alias2.localpart
 
             # Deactivate first user
             user1_obj = models.User.query.get(user1_email)
             user1_obj.enabled = False
             models.db.session.commit()
 
-            # Verify first user's aliases are disabled
+            # Verify first user's aliases no longer resolve
             for alias_email in aliases1_emails:
                 alias_obj = models.Alias.query.filter_by(email=alias_email).first()
-                assert alias_obj.disabled is True
+                assert alias_obj.disabled is False  # flag is independent
+                resolved = models.Alias.resolve(alias_obj.localpart, 'example.com')
+                assert resolved is None, f"Alias {alias_email} should not resolve when owner is disabled"
 
-            # Verify second user's alias is still enabled
-            alias2_obj = models.Alias.query.filter_by(email=alias2_email).first()
-            assert alias2_obj.disabled is False
+            # Verify second user's alias still resolves
+            resolved2 = models.Alias.resolve(alias2_localpart, 'example.com')
+            assert resolved2 is not None
 
     def test_disabled_aliases_not_resolved(self, app, setup_user_with_aliases):
         """Disabled aliases should not be resolved for email delivery"""
@@ -128,8 +134,8 @@ class TestUserDeactivation:
             resolved = models.Alias.resolve(alias_localpart, 'example.com')
             assert resolved is None
 
-    def test_reactivation_keeps_aliases_disabled(self, app, setup_user_with_aliases):
-        """Re-enabling a user should NOT automatically re-enable their aliases"""
+    def test_reactivation_restores_alias_resolution(self, app, setup_user_with_aliases):
+        """Re-enabling a user should automatically restore alias resolution"""
         user_email, alias_emails = setup_user_with_aliases()
 
         with app.app_context():
@@ -138,20 +144,24 @@ class TestUserDeactivation:
             user_obj.enabled = False
             models.db.session.commit()
 
-            # Verify aliases are disabled
+            # Verify aliases no longer resolve while owner is disabled
             for alias_email in alias_emails:
                 alias_obj = models.Alias.query.filter_by(email=alias_email).first()
-                assert alias_obj.disabled is True
+                resolved = models.Alias.resolve(alias_obj.localpart, 'example.com')
+                assert resolved is None
 
             # Re-enable user
             user_obj = models.User.query.get(user_email)
             user_obj.enabled = True
             models.db.session.commit()
 
-            # Aliases should still be disabled (manual intervention required to enable)
+            # Aliases should resolve again without any manual intervention
             for alias_email in alias_emails:
                 alias_obj = models.Alias.query.filter_by(email=alias_email).first()
-                assert alias_obj.disabled is True
+                resolved = models.Alias.resolve(alias_obj.localpart, 'example.com')
+                assert resolved is not None, (
+                    f"Alias {alias_email} should resolve again after owner is re-enabled"
+                )
 
 
 class TestUserDeletion:

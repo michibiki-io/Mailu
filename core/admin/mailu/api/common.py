@@ -7,6 +7,7 @@ import urllib.parse
 import hmac
 from functools import wraps
 from flask_restx import abort
+import sqlalchemy
 from sqlalchemy.sql.expression import label
 
 def fqdn_in_use(name):
@@ -52,28 +53,30 @@ def user_token_authorization(func):
         
         auth = request.headers.get('Authentication')
         if not auth:
-            if flask_login.current_user.is_authenticated:
-                flask.g.user = flask_login.current_user
-                return func(*args, **kwds)
-            abort(401, 'A valid Authentication header is mandatory')
+            if not flask_login.current_user.is_authenticated:
+                abort(401, 'A valid Authentication header is mandatory')
+            flask.g.user = flask_login.current_user
+            return func(*args, **kwds)
         
-        if ':' not in auth:
+        user_email, _, token = auth.partition(':')
+        if not token:
             utils.limiter.rate_limit_ip(client_ip)
             abort(401, 'Invalid credentials format (expected email:token)')
         
-        user_email, token = auth.split(':', 1)
         user_email = urllib.parse.unquote(user_email)
         token = urllib.parse.unquote(token)
         
         # Try to get the user
+        user = None
+        cause = 'not found'
         try:
-            user = models.User.query.get(user_email) if '@' in user_email else None
-        except:
-            user = None
+            user = models.User.query.get(user_email)
+        except sqlalchemy.exc.StatementError as exc:
+            cause, _, _ = str(exc).partition('\n')
         
         if not user:
             utils.limiter.rate_limit_ip(client_ip)
-            flask.current_app.logger.warn(f'Invalid user {user_email!r} from {client_ip}.')
+            flask.current_app.logger.warn(f'Invalid user {user_email!r} from {client_ip}: {cause}')
             abort(403, 'Invalid credentials')
         
         # IP check (check token IP restrictions in check_credentials_for_api)

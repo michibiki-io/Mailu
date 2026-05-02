@@ -2,6 +2,7 @@ from wtforms import validators, fields, widgets
 from wtforms.validators import ValidationError
 from wtforms_components import fields as fields_
 from flask_babel import lazy_gettext as _
+from .. import models
 
 import flask_login
 import flask_wtf
@@ -26,14 +27,11 @@ class DestinationField(fields.SelectMultipleField):
     validator = re.compile(r'^.+@([^.@][^@]+)$', re.IGNORECASE)
 
     def iter_choices(self):
-        from .. import models
-        
-        managed = []
-        for email in flask_login.current_user.get_managed_emails():
-            # Filter out anonymous aliases (those with owner_email set)
-            if isinstance(email, models.Alias) and email.owner_email is not None:
-                continue
-            managed.append(str(email))
+        managed = [
+            str(email)
+            for email in flask_login.current_user.get_managed_emails()
+            if not (isinstance(email, models.Alias) and email.owner_email is not None)
+        ]
         
         for email in managed:
             selected = self.data is not None and self.coerce(email) in self.data
