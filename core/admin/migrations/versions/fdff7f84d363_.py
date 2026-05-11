@@ -1,14 +1,14 @@
 """Add invisible column to fetch table
 
 Revision ID: fdff7f84d363
-Revises: 0ba45693748d
+Revises: 31f40da48c01
 Create Date: 2026-05-11 08:55:00.000000
 
 """
 
 # revision identifiers, used by Alembic.
 revision = 'fdff7f84d363'
-down_revision = '0ba45693748d'
+down_revision = '31f40da48c01'
 
 from alembic import op
 import sqlalchemy as sa
