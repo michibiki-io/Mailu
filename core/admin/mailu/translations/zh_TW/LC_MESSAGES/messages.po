@@ -277,6 +277,10 @@ msgstr "用户名"
 msgid "Keep emails on the server"
 msgstr "在主機上保留電子郵件"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "保留原始元數據"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "公告主旨"

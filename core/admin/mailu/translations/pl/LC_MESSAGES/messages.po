@@ -308,6 +308,10 @@ msgstr "Nazwa użytkownika"
 msgid "Keep emails on the server"
 msgstr "Przechowuj wiadomości na serwerze"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Zachowaj oryginalne metadane"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "Temat ogłoszenia"

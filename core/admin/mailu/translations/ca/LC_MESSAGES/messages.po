@@ -288,6 +288,10 @@ msgstr "Nom d'usuari"
 msgid "Keep emails on the server"
 msgstr "Mantén els correus al servidor"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Conserva les metadades originals"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "Tema de la notificació"

@@ -286,6 +286,10 @@ msgstr "Brugernavn"
 msgid "Keep emails on the server"
 msgstr "Gem e-mails på serveren"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Behold oprindelige metadata"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr ""

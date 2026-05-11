@@ -341,6 +341,10 @@ msgid "Rescan emails locally"
 msgstr "E-Mails lokal erneut scannen"
 
 #: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Ursprüngliche Metadaten behalten"
+
+#: mailu/ui/forms.py:201
 msgid "Folders to fetch on the server"
 msgstr "Auf dem Server abzurufende Ordner"
 
