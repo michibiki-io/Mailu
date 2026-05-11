@@ -19,7 +19,7 @@ fetchmail -N \
     --idfile /data/fetchids --uidl \
     --pidfile /dev/shm/fetchmail.pid \
     --sslcertck --sslcertpath /etc/ssl/certs \
-    -f {}
+    {} -f {}
 """
 
 
@@ -51,11 +51,12 @@ def escape_rc_string(arg):
     return "".join("\\x%2x" % ord(char) for char in arg)
 
 
-def fetchmail(fetchmailrc):
+def fetchmail(fetchmailrc, invisible):
     with tempfile.NamedTemporaryFile() as handler:
         handler.write(fetchmailrc.encode("utf8"))
         handler.flush()
-        command = FETCHMAIL.format(shlex.quote(handler.name))
+        invisible_flag = "--invisible " if invisible else ""
+        command = FETCHMAIL.format(invisible_flag, shlex.quote(handler.name))
         output = subprocess.check_output(command, shell=True)
         return output
 
@@ -69,7 +70,6 @@ def run(debug):
             if "FETCHMAIL_OPTIONS" in os.environ: options += f'{ os.environ["FETCHMAIL_OPTIONS"]}'
             options += " ssl" if fetch["tls"] else " sslproto \'\'"
             options += " keep" if fetch["keep"] else " fetchall"
-            options += " invisible" if fetch["invisible"] else ""
             folders = f"folders {",".join(f'"{imaputf7encode(item).replace('"',r"\34")}"' for item in fetch["folders"]) or '"INBOX"'}"
             fetchmailrc += RC_LINE.format(
                 user_email=escape_rc_string(fetch["user_email"]),
@@ -86,7 +86,7 @@ def run(debug):
             if debug:
                 print(fetchmailrc)
             try:
-                print(fetchmail(fetchmailrc))
+                print(fetchmail(fetchmailrc, fetch["invisible"]))
                 error_message = ""
             except subprocess.CalledProcessError as error:
                 error_message = error.output.decode("utf8")
