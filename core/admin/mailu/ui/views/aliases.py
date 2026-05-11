@@ -72,12 +72,10 @@ def alias_delete(alias):
 @access.authenticated
 def anonalias_list():
     user = flask_login.current_user
-    has_access = user.global_admin
-    if not has_access:
-        for d in models.Domain.query.all():
-            if models.has_domain_access(d.name, user=user) or (d.anonmail_enabled and user.domain and d.name == user.domain.name):
-                has_access = True
-                break
+    has_access = any(
+        models.has_domain_access(d.name, user=user) or (d.anonmail_enabled and user.domain and d.name == user.domain.name)
+        for d in models.Domain.query.all()
+    )
     
     # Query user's anonymous aliases, standard aliases do not have an owner_email
     aliases = models.Alias.query.filter_by(owner_email=user.email).all()
@@ -94,7 +92,7 @@ def anonalias_create():
     # Populate domain choices
     available_domains = []
     for d in models.Domain.query.all():
-        if user.global_admin or models.has_domain_access(d.name, user=user) or (d.anonmail_enabled and user.domain and d.name == user.domain.name):
+        if models.has_domain_access(d.name, user=user) or (d.anonmail_enabled and user.domain and d.name == user.domain.name):
             available_domains.append((d.name, d.name))
     
     form.domain.choices = available_domains
@@ -114,7 +112,11 @@ def anonalias_create():
         for _ in range(max_retries):
             candidate = utils.generate_anonymous_alias_localpart(hostname=hostname)
             email_candidate = f"{candidate}@{domain_name}"
-            if not models.Alias.query.filter_by(email=email_candidate).first() and not models.User.query.filter_by(email=email_candidate).first():
+            if (
+                    not models.Alias.resolve(candidate, domain_name) # Specifically check for SQL-like wildcard aliases.
+                    and not models.Alias.query.filter_by(email=email_candidate).first() # Still need to check for exact match to prevent collision with disabled aliases
+                    and not models.User.query.filter_by(email=email_candidate).first()
+            ):
                 localpart = candidate
                 break
         
