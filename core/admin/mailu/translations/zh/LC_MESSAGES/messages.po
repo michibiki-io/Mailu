@@ -310,6 +310,10 @@ msgid "Rescan emails locally"
 msgstr "本地重扫描邮件"
 
 #: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "保留原始元数据"
+
+#: mailu/ui/forms.py:201
 msgid "Folders to fetch on the server"
 msgstr "服务器收取文件夹"
 

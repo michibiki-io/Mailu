@@ -288,6 +288,10 @@ msgstr "שם משתמש"
 msgid "Keep emails on the server"
 msgstr "להשאיר את ההודעות על השרת"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "שמור על מטא-נתונים מקוריים"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "נושא ההכרזה"

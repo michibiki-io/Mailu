@@ -282,6 +282,10 @@ msgstr "Felhasználó neve"
 msgid "Keep emails on the server"
 msgstr "Levelek szerveren tartása"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Eredeti metaadatok megtartása"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "Bejelentés tárgya"

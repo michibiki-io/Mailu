@@ -305,6 +305,10 @@ msgstr "kunt u hier klikken om deze automatisch te configureren."
 msgid "Keep emails on the server"
 msgstr "Behoud de e-mails op de server"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Bewaar oorspronkelijke metadata"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "Mededeling onderwerp"

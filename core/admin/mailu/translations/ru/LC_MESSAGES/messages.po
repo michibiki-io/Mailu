@@ -283,6 +283,10 @@ msgstr "Имя пользователя"
 msgid "Keep emails on the server"
 msgstr "Хранить письма на сервере"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Сохранять оригинальные метаданные"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "Тема объявления"

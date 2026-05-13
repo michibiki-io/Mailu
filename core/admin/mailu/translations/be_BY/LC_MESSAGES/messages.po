@@ -278,6 +278,10 @@ msgstr "Імя карыстальніка"
 msgid "Keep emails on the server"
 msgstr "Захоўваць лісты на сэрвэры"
 
+#: mailu/ui/forms.py:200
+msgid "Keep original metadata"
+msgstr "Захоўваць арыгінальныя метаданыя"
+
 #: mailu/ui/forms.py:172
 msgid "Announcement subject"
 msgstr "Тэма абвесткі"
