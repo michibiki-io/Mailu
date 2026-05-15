@@ -65,7 +65,7 @@ class RandomAlias(Resource):
         # Find all domains with anonmail access
         accessible_domains = []
         for d in models.Domain.query.all():
-            if (g.user.global_admin or models.has_domain_access(d.name, user=g.user) or 
+            if (models.has_domain_access(d.name, user=g.user) or
                 (d.anonmail_enabled and g.user.domain and d.name == g.user.domain.name)):
                 accessible_domains.append(d.name)
 
@@ -83,7 +83,11 @@ class RandomAlias(Resource):
         for _ in range(flask.current_app.config.get('ANONMAIL_MAX_RETRIES', 10)):
             candidate = utils.generate_anonymous_alias_localpart(hostname=hostname)
             email_candidate = f"{candidate}@{domain_name}"
-            if not models.Alias.query.filter_by(email=email_candidate).first() and not models.User.query.filter_by(email=email_candidate).first():
+            if (
+                not models.Alias.resolve(candidate, domain_name) # Specifically check for SQL-like wildcard aliases.
+                and not models.Alias.query.filter_by(email=email_candidate).first() # Still need to check for exact match to prevent collision with disabled aliases
+                and not models.User.query.filter_by(email=email_candidate).first()
+            ):
                 localpart = candidate
                 break
         
