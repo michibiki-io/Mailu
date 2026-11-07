@@ -40,7 +40,6 @@ validators
 Werkzeug
 WTForms
 WTForms-Components
-xmltodict
 
 # core/nginx
 watchdog

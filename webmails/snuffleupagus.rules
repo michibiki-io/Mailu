@@ -117,11 +117,11 @@ sp.disable_function.function("is_callable").param("value").value("passthru").dro
 #sp.disable_function.function("PDO::query").ret("FALSE").drop();
 
 # Ensure that certificates are properly verified
-sp.disable_function.function("curl_setopt").param("value").value("1").allow();
-sp.disable_function.function("curl_setopt").param("value").value("2").allow();
+#sp.disable_function.function("curl_setopt").param("value").value("1").allow();
+#sp.disable_function.function("curl_setopt").param("value").value("2").allow();
 # `81` is SSL_VERIFYHOST and `64` SSL_VERIFYPEER
-sp.disable_function.function("curl_setopt").param("option").value("64").drop().alias("Please don't turn CURLOPT_SSL_VERIFYCLIENT off.");
-sp.disable_function.function("curl_setopt").param("option").value("81").drop().alias("Please don't turn CURLOPT_SSL_VERIFYHOST off.");
+#sp.disable_function.function("curl_setopt").param("option").value("64").drop().alias("Please don't turn CURLOPT_SSL_VERIFYCLIENT off.");
+#sp.disable_function.function("curl_setopt").param("option").value("81").drop().alias("Please don't turn CURLOPT_SSL_VERIFYHOST off.");
 
 # Ensure that file:// protocol is not allowed in CURL
 sp.disable_function.function("curl_setopt").param("value").value_r("file://").drop().alias("file:// protocol is disabled");
