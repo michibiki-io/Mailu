@@ -12,8 +12,15 @@
 # (Environment) input variables
 # If the env var is not set, then the default value is used
 #-----------------------------------------------------------------------------------------
+variable "ARCH" {
+  default = "linux/amd64"
+}
 variable "DOCKER_ORG" {
   default = "ghcr.io/mailu"
+}
+# Reuse the unchanged UI assets from the upstream release instead of rebuilding Node.
+variable "UPSTREAM_ADMIN_IMAGE" {
+  default = "ghcr.io/mailu/admin:2024.06"
 }
 variable "DOCKER_PREFIX" {
   default = "mailu-"
@@ -37,10 +44,7 @@ variable "PINNED_LABEL_VERSION" {
 #-----------------------------------------------------------------------------------------
 group "default" {
   targets = [
-    "admin",
-    "webmail",
-    "fetchmail",
-    "webdav"
+    "admin"
   ]
 }
 
@@ -48,7 +52,7 @@ group "default" {
 # Default settings that will be inherited by all targets (images to build).
 #-----------------------------------------------------------------------------------------
 target "defaults" {
-  platforms = [ "linux/amd64"]
+  platforms = split(",", ARCH)
   dockerfile = "Dockerfile"
   args = {
     VERSION = "${PINNED_LABEL_VERSION}"
@@ -62,8 +66,7 @@ target "defaults" {
 function "tag" {
   params = [image_name]
   result = [  notequal("master",MAILU_VERSION) && notequal("master-arm",MAILU_VERSION) ? "${DOCKER_ORG}/${DOCKER_PREFIX}${image_name}:${PINNED_MAILU_VERSION}": "",
-             "${DOCKER_ORG}/${DOCKER_PREFIX}${image_name}:${MAILU_VERSION}",
-             "${DOCKER_ORG}/${DOCKER_PREFIX}${image_name}:latest"
+             "${DOCKER_ORG}/${DOCKER_PREFIX}${image_name}:${MAILU_VERSION}"
           ]
 }
 
@@ -129,7 +132,10 @@ target "admin" {
   context = "core/admin/"
   contexts = {
     base = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}base:${MAILU_VERSION}"
-    assets = "docker-image://${DOCKER_ORG}/${DOCKER_PREFIX}assets:${MAILU_VERSION}"
+    assets = "docker-image://${UPSTREAM_ADMIN_IMAGE}"
+  }
+  args = {
+    ASSETS_PATH = "/app/mailu/static"
   }
   tags = tag("admin")
 }
