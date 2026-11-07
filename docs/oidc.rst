@@ -9,7 +9,8 @@ Configuration
 -------------
 
 * ``OIDC_ENABLED`` (default ``false``): enable OIDC.
-* ``OIDC_PROVIDER_INFO_URL``: the provider's issuer URL, for example
+* ``OIDC_PROVIDER_INFO_URL``: the provider's issuer URL (default
+  ``https://localhost/info`` is a placeholder; set your real issuer), for example
   ``https://keycloak.example.com/realms/mailu``. PyOIDC appends
   ``/.well-known/openid-configuration``; do not append it yourself.
 * ``OIDC_CLIENT_ID`` and ``OIDC_CLIENT_SECRET``: a confidential OIDC client.
@@ -26,7 +27,8 @@ Configuration
 
 The provider must support authorization code flow, signed ID Tokens, UserInfo,
 and token introspection advertised as ``introspection_endpoint`` in discovery.
-Use ``openid email profile`` scopes. Fresh credential verification additionally
+Token responses must include ``token_type=Bearer`` and a positive integer
+``expires_in`` in seconds. Use ``openid email profile`` scopes. Fresh credential verification additionally
 requires ``prompt=login``, ``max_age=0`` and a recent ID Token ``auth_time``.
 A provider without introspection is refused with a configuration message;
 expiry-only fallback is not supported. No blanket compatibility with providers
@@ -111,6 +113,9 @@ fresh browser OIDC verification. Initial self-service local-password setup
 requires fresh OIDC verification; subsequent self-service password changes allow
 either alternative. This applies to the actual POST, including forced password
 changes. An existing browser login or IdP password grant alone is insufficient.
+This verification also applies when OIDC is disabled. Header-proxy users with
+an unknown, automatically generated password need an administrator to set a
+known local password, or a matching OIDC identity for fresh verification.
 Scoped administrator password-setting rights and management APIs authenticated
 with ``API_TOKEN`` retain their existing authorization boundary.
 
@@ -146,7 +151,8 @@ The production pin already uses this version. Development and focused tests pin
 the same release and assert the imported distribution version. Unreleased master
 is not used. Tests exercise the real Flask app and PyOIDC parsing/signatures with
 an isolated SQLite database, session/limiter storage and deterministic fake IdP.
-Run without publishing images::
+MySQL/PostgreSQL integration and production IdP/mail-stack e2e are not covered
+by this focused SQLite suite. Run without publishing images::
 
     docker build -t mailu-oidc-tests -f tests/oidc/Dockerfile .
     docker run --rm mailu-oidc-tests
@@ -163,6 +169,7 @@ Run without publishing images::
 
 ``OIDC_ENABLED=true`` とクライアント ID・secret を設定する。
 ``OIDC_PROVIDER_INFO_URL`` は issuer URL とし、discovery の末尾は付けない。
+既定の ``https://localhost/info`` は仮の値なので、実際の issuer を指定する。
 ``OIDC_REDIRECT_HOST`` は公開ホスト名と任意のポート番号とし、scheme や path は付けない。
 IdP に ``https://<OIDC_REDIRECT_HOST>/sso/login/oidc`` を正確に登録する。
 ボタン名は ``OIDC_BUTTON_NAME`` で指定する。
@@ -170,6 +177,7 @@ IdP に ``https://<OIDC_REDIRECT_HOST>/sso/login/oidc`` を正確に登録する
 IdP には認可コードフロー、署名された ID Token、UserInfo と introspection が必要。
 discovery に ``introspection_endpoint`` がない場合は、通信障害と区別して設定上の理由で拒否する。
 期限だけによる暗黙のフォールバックは行わない。
+トークン応答には ``token_type=Bearer`` と正整数秒の ``expires_in`` が必要。
 スコープは ``openid email profile`` を使う。
 メールクライアントで IdP のパスワードを使う場合だけ、IdP 側で password grant を許可する。
 
@@ -240,6 +248,9 @@ admin 画面は HTTP 503、Nginx の内部認可は既存契約に合わせて H
 本人によるアプリトークン発行には、現在のローカルパスワードまたは新たな OIDC 再認証を要求する。
 ローカルパスワードの初回設定は OIDC 再認証、設定後の本人変更はそのどちらかを要求する。
 両方は要求しない。
+OIDC 無効時もこの本人確認を適用する。
+自動生成パスワードを知らないヘッダープロキシ利用者は、管理者による既知のローカルパスワード設定か、
+同じメールアドレスの OIDC アカウントでの再認証が必要になる。
 強制パスワード変更を含む実際の POST に適用し、既存セッションや password grant だけでは許可しない。
 既存の管理権限によるパスワード設定と、``API_TOKEN`` を使う管理 API の境界は維持する。
 代理操作の本人確認は操作する管理者を対象とし、対象ユーザーの資格情報は使わない。
@@ -264,3 +275,5 @@ IdP の SSO 状態、Mailu アプリトークン、接続済み SMTP・IMAP は�
 2026-11-07 に確認した ``oic`` の最新安定版は 1.7.0 で、本番の既存 pin と一致する。
 開発・テストも同じ版に固定し、実際に import した配布物の版とプロトコルの動作を回帰テストで検証する。
 上記の Docker コマンドは公開・本番 IdP 接続を伴わない。
+
+この SQLite テストには、MySQL・PostgreSQL、本番 IdP、メールスタック全体の e2e は含まない。

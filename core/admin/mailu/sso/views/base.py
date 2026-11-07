@@ -56,7 +56,7 @@ def login():
                 return flask.render_template('login.html', form=form, fields=fields)
         user = models.User.login(username, form.pw.data)
         if user:
-            origin, _, token = flask.g.mailu_credential
+            origin, _credential_email, token = flask.g.mailu_credential
             oidc.clear_browser_state()
             flask.session['auth_origin'] = origin
             if token:
@@ -96,7 +96,12 @@ def oidc_reauthenticate():
     target = flask.request.args.get('target', flask_login.current_user.email)
     if operation not in {'token', 'password', 'forced_password'}:
         flask.abort(400)
+    try:
+        target = oidc.normalize_email(target)
+    except oidc.OidcError:
+        flask.abort(400)
     user = models.User.get(target) or flask.abort(404)
+    target = user.email
     actor = flask_login.current_user
     if target != actor.email and (operation != 'token' or user.domain not in actor.get_managed_domains()):
         flask.abort(403)
@@ -188,7 +193,6 @@ def pw_change():
             flask.current_app.logger.info(f'Forced password change by {user} from: {client_ip}/{client_port}: success: password: {form.pwned.data}')
             destination = flask.session.pop('redirect_to', None) or app.config['WEB_ADMIN']
             return flask.redirect(destination)
-        flask.flash(_("The current password is incorrect!"), "error")
 
     return flask.render_template('pw_change.html', form=form, reauth_url=flask.url_for('sso.oidc_reauthenticate', operation='forced_password'))
 

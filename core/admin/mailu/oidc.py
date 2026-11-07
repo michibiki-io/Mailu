@@ -165,7 +165,7 @@ class OidcClient:
 
     def begin(self, destination, operation=None, target=None):
         client = self.client()
-        if proof := flask.session.pop('oidc_proof', None):
+        if operation and (proof := flask.session.pop('oidc_proof', None)):
             app.session_store.delete(proof)
         actor = flask.session.get('_user_id')
         tx = _put('transaction', {'state': secrets.token_urlsafe(32), 'nonce': secrets.token_urlsafe(32),
@@ -219,6 +219,8 @@ class OidcClient:
         except UpdateFailed:
             raise Unavailable('Identity provider signing keys are temporarily unavailable') from None
         except Unavailable:
+            raise
+        except OidcError:
             raise
         except Exception:
             raise OidcError('Identity provider response could not be verified') from None
@@ -378,8 +380,13 @@ def provision(email, name):
             models.Domain.updated_at: models.Domain.updated_at}, synchronize_session=False)
     if not domain or domain.has_email(local) or models.Alias.resolve(local, domain_name):
         raise OidcError('Mailu domain is unknown or email address is already used')
-    if domain.max_users != -1 and models.User.query.filter_by(domain_name=domain_name).count() >= domain.max_users:
-        raise OidcError('Mailu domain user limit reached')
+    if domain.max_users != -1:
+        # A locking read sees current committed rows even under MySQL REPEATABLE READ.
+        # A normal COUNT could retain the snapshot established by User.get above.
+        current_users = models.User.query.with_entities(models.User._email).filter(
+            models.User.domain_name == domain_name).limit(domain.max_users).with_for_update().all()
+        if len(current_users) >= domain.max_users:
+            raise OidcError('Mailu domain user limit reached')
     quota = int(app.config['DEFAULT_QUOTA'])
     if domain.max_quota_bytes:
         quota = min(quota, domain.max_quota_bytes)

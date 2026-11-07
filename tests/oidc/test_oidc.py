@@ -515,6 +515,58 @@ class OidcTests(unittest.TestCase):
         self.idp.outage.clear()
         self.assertEqual(self.client.get('/admin/').status_code,302)
 
+
+    def test_failed_form_login_and_rate_limits_never_raise_500(self):
+        data={'email':EMAIL,'pw':'wrong-password','submitAdmin':'Sign in'}
+        for enabled in (False,True):
+            with self.subTest(oidc=enabled):
+                self.app.config['OIDC_ENABLED']=enabled
+                response=self.client.post('/sso/login',data=data)
+                self.assertEqual(response.status_code,200)
+                self.assertIn(b'Wrong e-mail or password',response.data)
+        for limiter in ('should_rate_limit_ip','should_rate_limit_user'):
+            with self.subTest(limiter=limiter),patch.object(utils.limiter,limiter,return_value=True):
+                response=self.client.post('/sso/login',data=data)
+                self.assertEqual(response.status_code,200)
+                self.assertIn(b'rate-limit',response.data)
+
+    def test_oidc_disabled_proxy_token_requires_known_local_password(self):
+        import ipaddress
+        self.app.config.update(OIDC_ENABLED=False,PROXY_AUTH_CREATE=True,
+            PROXY_AUTH_WHITELIST={ipaddress.ip_network('127.0.0.0/8')})
+        self.client.get('/sso/login',headers={'X-Auth-Email':'proxy@example.org'})
+        csrf=self.csrf('/admin/token/create')
+        data={'csrf_token':csrf,'raw_password':'a'*32}
+        self.client.post('/admin/token/create',data=data)
+        user=models.User.get('proxy@example.org');self.assertEqual(len(user.tokens),0)
+        user.set_password('known-password',keep_sessions=True);models.db.session.commit()
+        data['current_pw']='known-password';self.client.post('/admin/token/create',data=data)
+        self.assertEqual(len(user.tokens),1)
+
+    def test_reauthentication_normalizes_target_and_preserves_specific_error(self):
+        self.login();self.reauthenticate(target='ALICE@EXAMPLE.ORG')
+        with self.client.session_transaction() as session:
+            proof=pickle.loads(self.app.session_store.get(session['oidc_proof']))
+            self.assertEqual(proof['target'],EMAIL)
+        self.idp.claims={'auth_time':int(time.time())-600};self.reauthenticate()
+        with self.client.session_transaction() as session:
+            self.assertIn('Fresh authentication for the acting account is required',
+                [str(message) for category,message in session.get('_flashes',[])])
+        self.assertEqual(self.client.get('/sso/oidc/reauthenticate?operation=token&target=bad').status_code,400)
+
+    def test_forced_password_failure_has_one_verification_message(self):
+        self.login();self.passwordless();csrf=self.csrf('/sso/pw_change')
+        response=self.client.post('/sso/pw_change',data={'csrf_token':csrf,'pw':'new-password','pw2':'new-password'})
+        self.assertEqual(response.status_code,200)
+        self.assertIn(b'Current local password or fresh OIDC authentication is required',response.data)
+        self.assertNotIn(b'The current password is incorrect!',response.data)
+
+    def test_normal_login_start_preserves_proof_until_login_completes(self):
+        self.login();self.reauthenticate();args=self.begin()
+        with self.client.session_transaction() as session:self.assertIn('oidc_proof',session)
+        self.callback(args)
+        with self.client.session_transaction() as session:self.assertNotIn('oidc_proof',session)
+
     def test_cache_ttl_validation(self):
         for value in ('-1','bad','1.5','true'):
             with self.subTest(value=value), patch.dict(os.environ,OIDC_INTROSPECTION_CACHE_TTL=value):
