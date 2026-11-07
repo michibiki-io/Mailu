@@ -99,6 +99,13 @@ then creates the fork's ``2024.06.67`` Git tag and GitHub Release. It does not
 increment the upstream version number or merge upstream changes automatically.
 If no published upstream release is included, the workflow fails before building.
 
+Git tag and GitHub Release creation require a new-release instruction and
+successful image publication in a non-cancelled workflow. Intentionally skipped
+optional jobs, such as opt-in integration tests or an unrequested architecture,
+do not block Release creation after publication succeeds. Failed, cancelled or
+skipped publication never creates a Release. Release notes are created with the
+Release; the upstream version and existing fixed-tag protection below still apply.
+
 Once a fork release exists, its Git tag and fixed image tag remain unchanged;
 subsequent OIDC changes update only ``2024.06`` and ``latest``. The workflow also
 checks GHCR directly: fixed images published previously through dispatch are

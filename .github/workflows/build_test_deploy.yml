@@ -594,7 +594,7 @@ jobs:
   tag-release:
     permissions:
       contents: write
-    if: inputs.release == 'true'
+    if: ${{ !cancelled() && inputs.release == 'true' && needs.deploy.result == 'success' }}
     runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     needs:
       - deploy
