@@ -4,125 +4,64 @@ on:
     branches:
       - '2024.06'
 
+permissions:
+  contents: write
+  packages: write
+
 concurrency: ci-multiarch-${{ github.ref }}
 
-# REQUIRED global variables
-# DOCKER_ORG, docker org used for pushing images.
-env:
-  DOCKER_ORG: docker/michibiki/mailu-
-
 jobs:
-# This job calculates all global job variables that are required by all the subsequent jobs.
-# All subsequent jobs will retrieve and use these variables. This way the variables only have to be derived once.
   derive-variables:
-    name: derive variables
-    runs-on: ubuntu-latest
+    name: derive upstream release
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     outputs:
-        MAILU_VERSION: ${{ env.MAILU_VERSION }}
-        PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}
-        DOCKER_ORG: ${{ env.DOCKER_ORG_DERIVED }}
-        BRANCH: ${{ env.BRANCH }}
-        DEPLOY: ${{ env.DEPLOY }}
-        RELEASE: ${{ env.RELEASE }}
+      MAILU_VERSION: ${{ steps.version.outputs.mailu_version }}
+      PINNED_MAILU_VERSION: ${{ steps.version.outputs.pinned_mailu_version }}
+      DOCKER_ORG: ${{ steps.version.outputs.docker_org }}
+      BRANCH: ${{ steps.version.outputs.branch }}
+      DEPLOY: ${{ steps.version.outputs.deploy }}
+      RELEASE: ${{ steps.version.outputs.release }}
+      PUBLISH_PINNED: ${{ steps.version.outputs.publish_pinned }}
+      UPSTREAM_ADMIN_IMAGE: ${{ steps.version.outputs.upstream_admin_image }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # fetch-depth 0 is required to also retrieve all tags.
           fetch-depth: 0
-      - name: Extract branch name
-        shell: bash
-        run: |
-          echo "BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
-        #For branch TESTING, we set the image tag to pr-xxxx
-      - name: Derive MAILU_VERSION and PINNED_MAILU_VERSION and DEPLOY/RELEASE for branch testing
-        if: env.BRANCH == 'testing'
-        shell: bash
+      - name: Login to GHCR to check existing fixed image tags
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+      - name: Select the newest upstream release included in this commit
+        id: version
         env:
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-        run: |
-          echo "MAILU_VERSION=pr-${COMMIT_MESSAGE//[!0-9]/}" >> $GITHUB_ENV
-          echo "PINNED_MAILU_VERSION=pr-${COMMIT_MESSAGE//[!0-9]/}" >> $GITHUB_ENV
-          echo "DOCKER_ORG_DERIVED=${{ env.DOCKER_ORG }}" >> $GITHUB_ENV
-          echo "DEPLOY=true" >> $GITHUB_ENV
-          echo "RELEASE=false" >> $GITHUB_ENV
-      - name: Derive MAILU_VERSION and DEPLOY/RELEASE for other branches than testing
-        if: env.BRANCH != 'testing'
-        shell: bash
-        run: |
-          echo "MAILU_VERSION=${{ env.BRANCH }}" >> $GITHUB_ENV
-          echo "DOCKER_ORG_DERIVED=${{ env.DOCKER_ORG }}" >> $GITHUB_ENV
-          echo "DEPLOY=true" >> $GITHUB_ENV
-          echo "RELEASE=false" >> $GITHUB_ENV
-      - name: Derive PINNED_MAILU_VERSION and DEPLOY/RELEASE for normal release x.y
-        if: env.BRANCH != 'testing' && env.BRANCH != 'staging' && env.BRANCH != 'master' && !(contains(env.BRANCH, 'test-'))
-        shell: bash
-        run: |
-          version=$( git tag --sort=version:refname --list "${{ env.MAILU_VERSION }}.*" | tail -1  );root_version=${version%.*};patch_version=${version##*.};if [ "$patch_version" == "" ]; then pinned_version=${{ env.MAILU_VERSION }}.0; else pinned_version=$root_version.$(expr $patch_version + 1); fi;echo "PINNED_MAILU_VERSION=$pinned_version" >> $GITHUB_ENV
-          echo "DEPLOY=true" >> $GITHUB_ENV
-          echo "RELEASE=true" >> $GITHUB_ENV
-      - name: Derive PINNED_MAILU_VERSION and DEPLOY/RELEASE for staging
-        id: deploy
-        if: env.BRANCH == 'staging'
-        shell: bash
-        run: |
-          echo "PINNED_MAILU_VERSION=staging" >> $GITHUB_ENV
-          echo "DEPLOY=false" >> $GITHUB_ENV
-          echo "RELEASE=false" >> $GITHUB_ENV
-      - name: Derive PINNED_MAILU_VERSION for master
-        if: env.BRANCH == 'master'
-        shell: bash
-        env:
-          GITHUB_SHA: ${{ env.GITHUB_SHA }}
-        run: |
-          echo "PINNED_MAILU_VERSION=$GITHUB_SHA" >> $GITHUB_ENV
-          echo "DEPLOY=true" >> $GITHUB_ENV
-          echo "RELEASE=false" >> $GITHUB_ENV
-      - name: Derive for branch test-*
-        if: contains(env.BRANCH, 'test-')
-        run: |
-          echo "MAILU_VERSION=${{ env.BRANCH }}" >> $GITHUB_ENV
-          echo "PINNED_MAILU_VERSION=${{ env.BRANCH }}" >> $GITHUB_ENV
-          echo "DOCKER_ORG_DERIVED=${{ env.DOCKER_ORG }}" >> $GITHUB_ENV
-          echo "DEPLOY=true" >> $GITHUB_ENV
-          echo "RELEASE=false" >> $GITHUB_ENV
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+        run: python3 scripts/release/upstream_version.py --branch "$RELEASE_BRANCH"
 
   build-test-deploy:
-    needs:
-      - derive-variables
+    needs: derive-variables
     uses: ./.github/workflows/build_test_deploy.yml
     with:
       architecture: 'linux/amd64,linux/arm64/v8,linux/arm/v7'
-      mailu_version: ${{needs.derive-variables.outputs.MAILU_VERSION}}
-      pinned_mailu_version: ${{needs.derive-variables.outputs.PINNED_MAILU_VERSION}}
-      docker_org: ${{needs.derive-variables.outputs.DOCKER_ORG}}
-      branch: ${{needs.derive-variables.outputs.BRANCH}}
-      deploy: ${{needs.derive-variables.outputs.DEPLOY}}
-      release: ${{needs.derive-variables.outputs.RELEASE}}
+      mailu_version: ${{ needs.derive-variables.outputs.MAILU_VERSION }}
+      pinned_mailu_version: ${{ needs.derive-variables.outputs.PINNED_MAILU_VERSION }}
+      docker_org: ${{ needs.derive-variables.outputs.DOCKER_ORG }}
+      branch: ${{ needs.derive-variables.outputs.BRANCH }}
+      deploy: ${{ needs.derive-variables.outputs.DEPLOY }}
+      release: ${{ needs.derive-variables.outputs.RELEASE }}
+      publish_pinned: ${{ needs.derive-variables.outputs.PUBLISH_PINNED }}
+      upstream_admin_image: ${{ needs.derive-variables.outputs.UPSTREAM_ADMIN_IMAGE }}
     secrets: inherit
 
- # This job is watched by bors. It only complets if building,testing and deploy worked.
   ci-success:
     name: CI-Done
-    #Returns true when none of the **previous** steps have failed or have been canceled.
-    if: success()
-    needs:
-      - build-test-deploy
-    runs-on: ubuntu-latest
+    if: always()
+    needs: build-test-deploy
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     steps:
-      - name: CI/CD succeeded.
-        run: exit 0
-
-################################################
-# Code block that is used as one liner for the step:
-# Derive PINNED_MAILU_VERSION and DEPLOY/RELEASE for normal release x.y
-##!/bin/bash
-#version=$( git tag --sort=version:refname --list "{{ env.MAILU_VERSION }}.*" | tail -1  )
-#root_version=${version%.*}
-#patch_version=${version##*.}
-#if [ "$patch_version" == "" ]
-#then
-#  pinned_version={{ env.MAILU_VERSION }}.0
-#else
-#  pinned_version=$root_version.$(expr $patch_version + 1)
-#fi
-#echo "PINNED_MAILU_VERSION=$pinned_version" >> $GITHUB_ENV
+      - name: Check build and publication result
+        env:
+          RESULT: ${{ needs.build-test-deploy.result }}
+        run: test "$RESULT" = success

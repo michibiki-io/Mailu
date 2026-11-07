@@ -9,7 +9,9 @@ LABEL version=$VERSION
 RUN set -euxo pipefail \
   ; apk add --no-cache libressl mariadb-connector-c postgresql-libs
 
-COPY --from=assets /work/static/ ./mailu/static/
+# Local builds use the assets target; fork CI reuses the upstream admin image.
+ARG ASSETS_PATH=/work/static
+COPY --from=assets ${ASSETS_PATH}/ ./mailu/static/
 
 COPY audit.py /
 COPY start.py /

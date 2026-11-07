@@ -80,3 +80,69 @@ If you find yourself forking the project for a specific independent purpose
 be glad if you let us know so that we can list interesting known forks and
 their specific features (and backport some of them if your implementation
 is free as well).
+
+OIDC fork image workflow
+------------------------
+
+This fork publishes ``ghcr.io/<repository-owner>/mailu-admin`` on pushes to
+``2024.06``, including merges that import upstream changes. The GitHub default
+branch can remain ``master``. The workflow reads published releases from
+``Mailu/Mailu`` and selects the highest numbered ``2024.06.<patch>`` release
+whose tag commit is an ancestor of both the fork commit and the upstream
+``2024.06`` branch. Unmerged releases and unpublished tags are excluded.
+Upstream tags are fetched into a separate namespace so the fork's release tags
+can point to commits that include OIDC support.
+
+For example, after merging upstream ``2024.06.67``, the workflow publishes
+``mailu-admin:2024.06.67``, ``mailu-admin:2024.06``, and ``mailu-admin:latest``,
+then creates the fork's ``2024.06.67`` Git tag and GitHub Release. It does not
+increment the upstream version number or merge upstream changes automatically.
+If no published upstream release is included, the workflow fails before building.
+
+Once a fork release exists, its Git tag and fixed image tag remain unchanged;
+subsequent OIDC changes update only ``2024.06`` and ``latest``. The workflow also
+checks GHCR directly: fixed images published previously through dispatch are
+preserved even if no Git tag or GitHub Release exists. Such legacy images do not
+get a retroactive GitHub Release associated with the current commit. Registry
+authentication and network errors stop the workflow instead of being treated
+as an unpublished version. An imported
+upstream Git tag with the same name but a different commit blocks a new fork
+release and requires the tag collision to be resolved explicitly. Tags are
+never force-pushed.
+
+Only ``admin`` is a final build target. The intermediate ``base`` image is
+also built because ``core/base/requirements-prod.txt`` adds the OIDC library.
+Unchanged static files are copied from the matching fixed upstream image
+(for example ``ghcr.io/mailu/admin:2024.06.67``), passed through the
+``UPSTREAM_ADMIN_IMAGE`` Bake variable. Other services should keep using
+the upstream release images. Local builds using ``tests/build.hcl`` continue
+to build their own UI assets.
+
+Both the base and admin builds support ``linux/amd64``, ``linux/arm64/v8``, and
+``linux/arm/v7``. ARM builds use QEMU on a GitHub-hosted Ubuntu runner by default;
+no upstream self-hosted runner is required. Optionally set ``ACTIONS_RUNNER``
+and ``ACTIONS_RUNNER_ARM64`` repository variables to Docker-capable runner labels.
+QEMU is still configured for arm/v7 when using a native arm64 runner.
+
+The workflow uses ``GITHUB_TOKEN`` with explicit ``packages: write`` permission
+for GHCR and ``contents: write`` permission for tags and GitHub releases.
+Existing packages must grant this repository Actions access. Docker Hub login
+secrets (``Docker_Login`` / ``Docker_Password`` and the ARM equivalents ending
+in ``2``) are optional and only increase the authenticated pull allowance.
+
+``build-test-deploy`` remains available through manual dispatch. For an ARM-only
+build, either ARM platform can be selected independently. Set ``publish_pinned``
+to ``false`` to preserve an existing fixed image tag. Manual dispatch defaults
+the upstream assets image to ``ghcr.io/mailu/admin:<pinned_mailu_version>``;
+``upstream_admin_image`` can override this for custom tags. Intermediate image
+tags include the workflow run ID, and ``latest`` is updated only after all
+requested platforms finish and their manifests are combined. Dispatches and
+push builds serialize publication for the same Git ref.
+
+The inherited integration tests are opt-in and require the complete upstream
+service image set; the OIDC-only build does not create that set.
+
+Pull requests targeting ``2024.06`` and pushes to ``feature/**`` run
+``Validate fork workflows``. This read-only workflow checks release-selection
+regressions, Bake platform/image plans, publication command arguments, and
+workflow/shell syntax; it neither builds final images nor publishes packages.

@@ -1,0 +1,40 @@
+name: Validate fork workflows
+on:
+  pull_request:
+    branches:
+      - '2024.06'
+  push:
+    branches:
+      - 'feature/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Test release selection and non-publishing image plans
+        run: python3 -m unittest discover -s tests/release -v
+      - name: Check shell syntax
+        run: bash -n scripts/release/publish-images.sh
+      - name: Check GitHub Actions workflows
+        env:
+          ACTIONLINT_VERSION: '1.7.12'
+        run: |
+          tool_dir=$(mktemp -d)
+          trap 'rm -rf "$tool_dir"' EXIT
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          release="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          curl -fsSL "$release/$archive" -o "$tool_dir/$archive"
+          curl -fsSL "$release/actionlint_${ACTIONLINT_VERSION}_checksums.txt" -o "$tool_dir/checksums.txt"
+          (cd "$tool_dir" && sha256sum --check --ignore-missing checksums.txt)
+          tar -xzf "$tool_dir/$archive" -C "$tool_dir" actionlint
+          "$tool_dir/actionlint" -shellcheck='' .github/workflows/*.yml
