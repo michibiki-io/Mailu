@@ -19,9 +19,8 @@ jobs:
     steps:
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v5
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Mirror images
         shell: bash
         env:

@@ -15,9 +15,9 @@ on:
   workflow_call:
     inputs:
       architecture:
-        description: 'The architecture(s) of the images that will be build. linux/amd64 or linux/arm64/v8,linux/arm/v7 or linux/amd64,linux/arm64/v8,linux/arm/v7'
+        description: 'The architecture(s) of the images that will be build. linux/amd64, linux/arm64 (or linux/arm64/v8), or a comma-separated combination'
         required: false
-        default: 'linux/amd64,linux/arm64/v8,linux/arm/v7'
+        default: 'linux/amd64,linux/arm64/v8'
         type: string
       mailu_version:
         description: 'The main version that is build. E.g. master or x.y.'
@@ -64,9 +64,9 @@ on:
   workflow_dispatch:
     inputs:
       architecture:
-        description: 'The architecture(s) of the images that will be build. linux/amd64 or linux/arm64/v8,linux/arm/v7 or linux/amd64,linux/arm64/v8,linux/arm/v7'
+        description: 'The architecture(s) of the images that will be build. linux/amd64, linux/arm64 (or linux/arm64/v8), or a comma-separated combination'
         required: false
-        default: 'linux/amd64,linux/arm64/v8,linux/arm/v7'
+        default: 'linux/amd64,linux/arm64/v8'
         type: string
       mailu_version:
         description: 'The main version that is build. E.g. master or x.y.'
@@ -134,7 +134,7 @@ jobs:
       images: ${{ steps.targets.outputs.images }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Validate architectures
         env:
           ARCHITECTURES: ${{ inputs.architecture }}
@@ -143,7 +143,7 @@ jobs:
           test "${#platforms[@]}" -gt 0
           for platform in "${platforms[@]}"; do
             case "$platform" in
-              linux/amd64|linux/arm64|linux/arm64/v8|linux/arm/v7) ;;
+              linux/amd64|linux/arm64|linux/arm64/v8) ;;
               *) echo "Unsupported platform: $platform" >&2; exit 1 ;;
             esac
           done
@@ -171,7 +171,7 @@ jobs:
      contents: read
      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -179,22 +179,18 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
         run: |
           docker context inspect builders >/dev/null 2>&1 || docker context create builders
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           endpoint: builders
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Get uuid
         id: uuid
         run: |
@@ -211,7 +207,7 @@ jobs:
           DOCKER_LOGIN: ${{ secrets.Docker_Login }}
           DOCKER_PASSW: ${{ secrets.Docker_Password }}
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 90
           retry_wait_seconds: 30
@@ -241,19 +237,26 @@ jobs:
 
 # This job builds the OIDC base image. UI assets are reused from upstream. The build cache is stored in the ghcr.io registry.
   build-base-assets-arm:
-    name: ARM - build OIDC base
+    name: ARM64 - build OIDC base
     needs: targets
-    if: (contains(inputs.architecture, 'linux/arm64') || contains(inputs.architecture, 'linux/arm/v7'))
+    if: contains(inputs.architecture, 'linux/arm64')
     strategy:
       fail-fast: false
       matrix:
         target: ["base"]
-    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || 'ubuntu-24.04-arm' }}
     permissions:
      contents: read
      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: Verify native ARM64 runner
+        run: |
+          architecture=$(uname -m)
+          if [ "$architecture" != aarch64 ]; then
+            echo "ARM jobs require an ARM64 runner; got $architecture. Check ACTIONS_RUNNER_ARM64." >&2
+            exit 1
+          fi
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -261,16 +264,12 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
+        uses: docker/setup-buildx-action@v4
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       #This is to prevent to shared runners from generating the same uuid
       - name: Get unique random number
         id: uuid
@@ -283,12 +282,12 @@ jobs:
           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}-build-${{ github.run_id }}-arm
           LABEL_VERSION: ${{ env.MAILU_VERSION }}
           PINNED_LABEL_VERSION: ${{ env.PINNED_MAILU_VERSION }}
-          ARCH: ${{ contains(inputs.architecture, 'linux/arm64') && (contains(inputs.architecture, 'linux/arm/v7') && 'linux/arm64/v8,linux/arm/v7' || 'linux/arm64/v8') || 'linux/arm/v7' }}
+          ARCH: 'linux/arm64/v8'
           BUILDER: ${{ steps.uuid.outputs.uuid }}
           DOCKER_LOGIN2: ${{ secrets.Docker_Login2 }}
           DOCKER_PASSW2: ${{ secrets.Docker_Password2 }}
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 180
           retry_wait_seconds: 30
@@ -332,7 +331,7 @@ jobs:
      contents: read
      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -340,22 +339,18 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
         run: |
           docker context inspect builders >/dev/null 2>&1 || docker context create builders
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           endpoint: builders
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Get uuid
         id: uuid
         run: |
@@ -372,7 +367,7 @@ jobs:
           DOCKER_LOGIN: ${{ secrets.Docker_Login }}
           DOCKER_PASSW: ${{ secrets.Docker_Password }}
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 90
           retry_wait_seconds: 30
@@ -402,8 +397,8 @@ jobs:
 
 # This job builds the main images. The build cache is stored in the ghcr.io registry.
   build-arm:
-    name: ARM - build
-    if: (contains(inputs.architecture, 'linux/arm64') || contains(inputs.architecture, 'linux/arm/v7'))
+    name: ARM64 - build
+    if: contains(inputs.architecture, 'linux/arm64')
     needs:
       - targets
       - build-base-assets-arm
@@ -411,12 +406,19 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.targets.outputs.matrix) }}
-    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || 'ubuntu-24.04-arm' }}
     permissions:
      contents: read
      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: Verify native ARM64 runner
+        run: |
+          architecture=$(uname -m)
+          if [ "$architecture" != aarch64 ]; then
+            echo "ARM jobs require an ARM64 runner; got $architecture. Check ACTIONS_RUNNER_ARM64." >&2
+            exit 1
+          fi
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -424,16 +426,12 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
+        uses: docker/setup-buildx-action@v4
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       #This is to prevent to shared runners from generating the same uuid
       - name: Get unique random number
         id: uuid
@@ -446,12 +444,12 @@ jobs:
           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}-build-${{ github.run_id }}-arm
           LABEL_VERSION: ${{ env.MAILU_VERSION }}
           PINNED_LABEL_VERSION: ${{ env.PINNED_MAILU_VERSION }}
-          ARCH: ${{ contains(inputs.architecture, 'linux/arm64') && (contains(inputs.architecture, 'linux/arm/v7') && 'linux/arm64/v8,linux/arm/v7' || 'linux/arm64/v8') || 'linux/arm/v7' }}
+          ARCH: 'linux/arm64/v8'
           BUILDER: ${{ steps.uuid.outputs.uuid }}
           DOCKER_LOGIN2: ${{ secrets.Docker_Login2 }}
           DOCKER_PASSW2: ${{ secrets.Docker_Password2 }}
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 180
           retry_wait_seconds: 30
@@ -501,7 +499,7 @@ jobs:
           - target: "filters"
             time: "2"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -509,26 +507,22 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
         run: |
           docker context inspect builders >/dev/null 2>&1 || docker context create builders
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Install python packages
         run: python3 -m pip install -r tests/requirements.txt
       - name: Copy all certs
@@ -548,7 +542,7 @@ jobs:
       needs.targets.result == 'success' &&
       !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
       (!contains(inputs.architecture, 'linux/amd64') || needs.build.result == 'success') &&
-      (!(contains(inputs.architecture, 'linux/arm64') || contains(inputs.architecture, 'linux/arm/v7')) || needs.build-arm.result == 'success')
+      (!contains(inputs.architecture, 'linux/arm64') || needs.build-arm.result == 'success')
     runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     needs:
       - targets
@@ -560,7 +554,7 @@ jobs:
       matrix:
         target: ${{ fromJson(needs.targets.outputs.images) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -568,28 +562,24 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
         run: |
           docker context inspect builders >/dev/null 2>&1 || docker context create builders
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           endpoint: builders
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Helper to convert docker org to lowercase
         id: string
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository_owner }}
+        shell: bash
+        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Publish requested platforms
         env:
           ARCHITECTURES: ${{ inputs.architecture }}
@@ -609,7 +599,7 @@ jobs:
     needs:
       - deploy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # fetch-depth 0 is required to also retrieve all tags.
           fetch-depth: 0
