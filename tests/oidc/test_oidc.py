@@ -65,6 +65,8 @@ class FakeIdP:
         elif path == '/token':
             args = parse_qs(kwargs.get('data', ''))
             grant = args.get('grant_type', [''])[0]
+            if grant == 'password':
+                assert set(args.get('scope', [''])[0].split()) == {'openid','email','profile'}
             if grant == 'password' and args.get('password') != ['idp-password']:
                 response.status_code = 400
                 data = {'error': 'invalid_grant'}
@@ -197,6 +199,7 @@ class OidcTests(unittest.TestCase):
     def test_callback_and_introspection_real_library(self):
         self.idp.email = 'ALICE@EXAMPLE.ORG'
         self.login()
+        self.assertEqual(self.user().displayed_name, 'Alice')
         response = self.client.get('/internal/auth/user')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers['X-User'], EMAIL)
@@ -486,6 +489,20 @@ class OidcTests(unittest.TestCase):
             results=list(executor.map(create,['new1@example.org','new2@example.org']))
         self.assertEqual(sum(results),1)
         self.assertEqual(models.User.query.count(),2)
+
+
+    def test_header_proxy_creation_clears_previous_oidc_origin(self):
+        import ipaddress
+        self.login();self.app.config['PROXY_AUTH_CREATE']=True
+        self.app.config['PROXY_AUTH_WHITELIST']={ipaddress.ip_network('127.0.0.0/8')}
+        response=self.client.get('/sso/login',headers={'X-Auth-Email':'proxy@example.org'})
+        self.assertEqual(response.location,'/admin')
+        with self.client.session_transaction() as session:
+            self.assertEqual(session['_user_id'],'proxy@example.org')
+            self.assertNotIn('oidc_token',session)
+            self.assertNotIn('auth_origin',session)
+        self.idp.outage.add('/introspect')
+        self.assertEqual(self.client.get('/admin/').status_code,302)
 
     def test_cache_ttl_validation(self):
         for value in ('-1','bad','1.5','true'):

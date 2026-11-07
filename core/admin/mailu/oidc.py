@@ -242,6 +242,7 @@ class OidcClient:
         client = self.client(password=True)
         try:
             args = {'username': username, 'password': password, 'grant_type': 'password',
+                    'scope': ['openid', 'email', 'profile'],
                     'client_id': client.client_id, 'client_secret': app.config['OIDC_CLIENT_SECRET']}
             url, body, http_args, _ = client.request_info(ROPCAccessTokenRequest, request_args=args, method='POST')
             response = client.request_and_return(url, AccessTokenResponse, 'POST', body, 'json', '', http_args)
@@ -352,6 +353,9 @@ def provision(email, name):
     if user:
         if not user.enabled:
             raise OidcError('Mailu account is disabled')
+        if user.displayed_name != name:
+            user.set_display_name(name)
+            models.db.session.commit()
         return user
     if not app.config['OIDC_AUTH_CREATE']:
         raise OidcError('Mailu account does not exist')

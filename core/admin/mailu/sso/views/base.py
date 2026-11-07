@@ -266,6 +266,7 @@ def _proxy():
     user.set_password(secrets.token_urlsafe(), keep_sessions=set(flask.session))
     models.db.session.add(user)
     models.db.session.commit()
+    oidc.clear_browser_state()
     flask.session.regenerate()
     flask_login.login_user(user)
     user.send_welcome()
