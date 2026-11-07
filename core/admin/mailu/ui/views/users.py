@@ -1,4 +1,4 @@
-from mailu import models, utils
+from mailu import models, utils, oidc
 from mailu.ui import ui, access, forms
 from flask import current_app as app
 
@@ -116,25 +116,30 @@ def user_settings(user_email):
     return flask.render_template('user/settings.html', form=form, user=user)
 
 def _process_password_change(form, user_email):
-    user_email_or_current = user_email or flask_login.current_user.email
-    user = models.User.query.get(user_email_or_current) or flask.abort(404)
+    user = models.User.get(user_email or flask_login.current_user.email) or flask.abort(404)
+    reauth_url = None if user_email else flask.url_for('sso.oidc_reauthenticate', operation='password')
     if form.validate_on_submit():
         if form.pw.data != form.pw2.data:
             flask.flash('Passwords do not match', 'error')
-        elif user_email or models.User.login(user_email_or_current, form.current_pw.data):
-            if msg := utils.isBadOrPwned(form):
-                flask.flash(msg, "error")
-                return flask.render_template('user/password.html', form=form, user=user)
-            flask.session.regenerate()
-            user.set_password(form.pw.data, keep_sessions=set(flask.session))
-            models.db.session.commit()
-            flask.flash('Password updated for %s' % user)
-            if user_email:
-                return flask.redirect(flask.url_for('.user_list',
-                    domain_name=user.domain.name))
+        elif msg := utils.isBadOrPwned(form):
+            flask.flash(msg, 'error')
         else:
-            flask.flash('Wrong current password', 'error')
-    return flask.render_template('user/password.html', form=form, user=user)
+            try:
+                if user_email:
+                    # The domain_admin decorator authorizes this administrative path.
+                    user.set_password(form.pw.data, keep_sessions={flask.session.sid})
+                    models.db.session.commit()
+                else:
+                    with oidc.verify_operation('password', user.email, form.current_pw.data):
+                        user.set_password(form.pw.data, keep_sessions={flask.session.sid})
+                        models.db.session.commit()
+                flask.session.regenerate()
+                flask.flash('Password updated for %s' % user)
+                if user_email:
+                    return flask.redirect(flask.url_for('.user_list', domain_name=user.domain.name))
+            except oidc.OidcError as exc:
+                flask.flash(str(exc), 'error')
+    return flask.render_template('user/password.html', form=form, user=user, reauth_url=reauth_url)
 
 @ui.route('/user/password', methods=['GET', 'POST'], defaults={'user_email': None})
 @access.owner(models.User, 'user_email')

@@ -21,6 +21,7 @@ import idna
 import dns.resolver
 import dns.exception
 import flask_login
+import flask
 
 from flask import current_app as app, session
 from sqlalchemy.ext import declarative
@@ -31,7 +32,6 @@ from werkzeug.utils import cached_property
 
 from mailu import dkim, utils
 
-from oic.oauth2.grant import Token
 
 # silence AttributeError: module 'bcrypt' has no attribute '__about__'
 logging.getLogger('passlib').setLevel(logging.ERROR)
@@ -536,15 +536,10 @@ class User(Base, Email):
     # Flask-login attributes
     is_active = True
     is_anonymous = False
-    _authenticated = True # Flask attribute would be is_authenticated but we needed to overrride this attribute for OIDC checks
 
     def get_id(self):
         """ return users email address """
         return self.email
-
-    @property
-    def oidc_token(self):
-        return session['oidc_token']
 
     @property
     def destination(self):
@@ -575,23 +570,12 @@ class User(Base, Email):
 
     @property
     def is_authenticated(self):
-        if 'oidc_token' not in session:
-            return self._authenticated
-        elif self.oidc_token.is_valid():
-            return True
-        else:
-            token = utils.oidc_client.check_validity(self.oidc_token)
-            if token is None:
-                flask_login.logout_user()
-                session.destroy()
-                return False
-            session['oidc_token'] = token
-            return True
+        # Browser token checks are enforced once, explicitly, before routing.
+        return self.enabled
 
-    @is_authenticated.setter
-    def is_authenticated(self, value):
-        if 'oidc_token' not in session:
-            self._authenticated = value
+    @property
+    def has_local_password(self):
+        return bool(self.password and self.password != 'openid')
 
     @classmethod
     def get_password_context(cls):
@@ -616,26 +600,22 @@ class User(Base, Email):
         return cls._ctx
 
     def check_password(self, password):
-        """ verifies password against stored hash
-            and updates hash if outdated
-        """
-        if password == '':
+        """Credential checks never consult or create browser authentication state."""
+        if not self.enabled or not password:
             return False
-        
+        if self.check_password_internal(password):
+            flask.g.mailu_credential = ('local', self.email, None)
+            return True
         if utils.oidc_client.is_enabled():
-            if 'oidc_token' not in session:
-                try:
-                    oidc_token = utils.oidc_client.get_token(self.email, password)
-                    if oidc_token is None:
-                        return self.check_password_internal(password)
-                    session['oidc_token'] = oidc_token
-                except: 
-                    return self.check_password_internal(password)
-                else:
-                    return True
-            return self.is_authenticated()
-        else:
-            return self.check_password_internal(password)
+            from mailu.oidc import OidcError
+            try:
+                token = utils.oidc_client.get_token(self.email, password)
+            except OidcError:
+                return False
+            if token:
+                flask.g.mailu_credential = ('oidc', self.email, token)
+                return True
+        return False
 
     def check_password_internal(self, password):
         if self.password is None or self.password == "openid":
@@ -713,28 +693,6 @@ set() containing the sessions to keep
     def get(cls, email):
         """ find user object for email address """
         return cls.query.get(email)
-
-    # @classmethod
-    # def create(cls, email, password='openid'):
-    #     email = email.split('@', 1)
-    #     domain = Domain.query.get(email[1])
-    #     if not domain:
-    #         domain = Domain(name=email[1])
-    #         db.session.add(domain)
-    #     user = User(
-    #         localpart=email[0],
-    #         domain=domain,
-    #         global_admin=False
-    #     )
-        
-    #     if password == 'openid':
-    #         user.set_password(password, True)
-    #     else:
-    #         user.set_password(password)
-        
-    #     db.session.add(user)
-    #     db.session.commit()
-    #     return user
 
     @classmethod
     def login(cls, email, password):

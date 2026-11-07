@@ -58,6 +58,7 @@ the version of Mailu that you are running.
     compose/setup
     kubernetes/mailu/index
     configuration
+    oidc
     dns
     reverse
     database

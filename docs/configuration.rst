@@ -216,6 +216,15 @@ Advanced settings
 
 The ``AUTH_REQUIRE_TOKENS`` (default: False) setting controls whether thick clients can authenticate using passwords or whether they are forced to use tokens/application specific passwords.
 
+In this fork, creating an application token requires the acting user's current local
+password or fresh OIDC verification, including when OIDC is disabled. Header-proxy
+users with an unknown generated password need an administrator-set local password
+or a matching OIDC identity. See :doc:`oidc` for the complete verification rules.
+
+この fork では OIDC 無効時も、アプリトークン発行に現在のローカルパスワードまたは新たな OIDC 再認証を要求する。
+自動生成パスワードを知らないヘッダープロキシ利用者には、管理者によるパスワード設定か同一メールの OIDC アカウントが必要。
+詳細な本人確認の仕様は :doc:`oidc` にまとめる。
+
 The ``API_TOKEN`` (default: None) setting configures the authentication token.
 The minimum length is 3 characters.
 This token must be passed as request header to the API as authentication token.

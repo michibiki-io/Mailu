@@ -1,4 +1,4 @@
-from mailu import models, utils
+from mailu import models, utils, oidc
 from mailu.ui import ui, forms, access
 
 from passlib import pwd
@@ -30,19 +30,24 @@ def token_create(user_email):
     form.displayed_password.data = form.raw_password.data
     utils.formatCSVField(form.ip)
     if form.validate_on_submit():
-        token = models.Token(user=user)
-        token.set_password(form.raw_password.data)
-        form.populate_obj(token)
-        if form.ip.data:
-            token.ip = form.ip.data.replace(' ','').split(',')
-        else:
-            del token.ip
-        models.db.session.add(token)
-        models.db.session.commit()
+        try:
+            with oidc.verify_operation('token', user.email, form.current_pw.data):
+                token = models.Token(user=user)
+                token.set_password(form.raw_password.data)
+                form.populate_obj(token)
+                if form.ip.data:
+                    token.ip = form.ip.data.replace(' ','').split(',')
+                else:
+                    del token.ip
+                models.db.session.add(token)
+                models.db.session.commit()
+        except oidc.OidcError as exc:
+            flask.flash(str(exc), 'error')
+            return flask.render_template('token/create.html', form=form, reauth_url=flask.url_for('sso.oidc_reauthenticate', operation='token', target=user.email))
         flask.flash('Authentication token created')
         return flask.redirect(
             flask.url_for('.token_list', user_email=user.email))
-    return flask.render_template('token/create.html', form=form)
+    return flask.render_template('token/create.html', form=form, reauth_url=flask.url_for('sso.oidc_reauthenticate', operation='token', target=user.email))
 
 
 @ui.route('/token/delete/<token_id>', methods=['GET', 'POST'])

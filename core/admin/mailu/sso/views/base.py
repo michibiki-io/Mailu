@@ -11,7 +11,8 @@ import secrets
 import ipaddress
 from urllib.parse import urlparse, urljoin, unquote
 
-from oic import rndstr
+from mailu import oidc
+import flask_wtf
 
 
 @sso.route('/login', methods=['GET', 'POST'])
@@ -55,6 +56,11 @@ def login():
                 return flask.render_template('login.html', form=form, fields=fields)
         user = models.User.login(username, form.pw.data)
         if user:
+            origin, _credential_email, token = flask.g.mailu_credential
+            oidc.clear_browser_state()
+            flask.session['auth_origin'] = origin
+            if token:
+                flask.session['oidc_token'] = token
             flask.session.regenerate()
             flask_login.login_user(user)
             if user.change_pw_next_login:
@@ -72,54 +78,87 @@ def login():
             flask.flash(_('Wrong e-mail or password'), 'error')
     return flask.render_template('login.html', form=form, fields=fields, oidc_enabled=app.config['OIDC_ENABLED'], oidc_redirect_url=utils.oidc_client.get_redirect_url())
 
-@sso.route('/login/oidc', methods=['GET', 'POST'])
+@sso.route('/oidc/start')
+def oidc_start():
+    try:
+        return redirect(utils.oidc_client.begin(_has_usable_redirect() or app.config['WEB_ADMIN']))
+    except oidc.OidcError as exc:
+        models.db.session.rollback()
+        app.logger.info('OIDC authentication refused: %s', exc)
+        flask.flash(str(exc), 'error')
+        return redirect(flask.url_for('sso.login'))
+
+
+@sso.route('/oidc/reauthenticate', methods=['GET', 'POST'])
+@access.authenticated
+def oidc_reauthenticate():
+    operation = flask.request.args.get('operation')
+    target = flask.request.args.get('target', flask_login.current_user.email)
+    if operation not in {'token', 'password', 'forced_password'}:
+        flask.abort(400)
+    try:
+        target = oidc.normalize_email(target)
+    except oidc.OidcError:
+        flask.abort(400)
+    user = models.User.get(target) or flask.abort(404)
+    target = user.email
+    actor = flask_login.current_user
+    if target != actor.email and (operation != 'token' or user.domain not in actor.get_managed_domains()):
+        flask.abort(403)
+    endpoints = {'token': 'ui.token_create', 'password': 'ui.user_password_change', 'forced_password': 'sso.pw_change'}
+    destination = flask.url_for(endpoints[operation], **({'user_email': target} if operation == 'token' and target != actor.email else {}))
+    form = flask_wtf.FlaskForm()
+    if form.validate_on_submit():
+        try:
+            return redirect(utils.oidc_client.begin(destination, operation, target))
+        except oidc.OidcError as exc:
+            flask.flash(str(exc), 'error')
+    return flask.render_template('oidc_reauthenticate.html', form=form, destination=destination)
+
+
+@sso.route('/login/oidc', methods=['GET'])
 def login_oidc():
-    # Redirect to /login if OIDC is disabled
     if not app.config['OIDC_ENABLED']:
-        return redirect('/login')
+        return redirect(flask.url_for('sso.login'))
+    try:
+        try:
+            query = flask.request.query_string.decode('ascii')
+        except UnicodeError:
+            raise oidc.OidcError('Malformed OIDC callback') from None
+        data, token, tx = utils.oidc_client.exchange_code(query)
+        if tx['operation']:
+            user = models.User.get(tx['actor'])
+            if not user or not user.enabled or user.email != data['email']:
+                raise oidc.OidcError('Fresh authentication must verify the current Mailu account')
+            oidc._put('proof', {'actor': user.email, 'operation': tx['operation'], 'target': tx['target']}, oidc.PROOF_TTL)
+            # A fresh browser exchange can also recover an OIDC-origin session.
+            if flask.session.get('auth_origin') == 'oidc':
+                flask.session['oidc_token'] = token
+            return redirect(tx['destination'])
+        ip = flask.request.headers.get('X-Real-IP', flask.request.remote_addr)
+        cookie, cookie_user = utils.limiter.parse_device_cookie(flask.request.cookies.get('rate_limit'))
+        if utils.limiter.should_rate_limit_ip(ip) or utils.limiter.should_rate_limit_user(data['email'], ip, cookie, cookie_user):
+            raise oidc.OidcError('Too many attempts (rate-limit)')
+        existing = flask.session.get('_user_id')
+        if existing and existing != data['email']:
+            raise oidc.OidcError('Sign out before signing in as another account')
+        user = oidc.provision(data['email'], data['name'])
+        oidc.clear_browser_state()
+        flask.session['auth_origin'] = 'oidc'
+        flask.session['oidc_token'] = token
+        flask.session.regenerate()
+        flask_login.login_user(user)
+        destination = tx['destination']
+        if user.change_pw_next_login:
+            flask.session['redirect_to'] = destination
+            destination = flask.url_for('sso.pw_change')
+        return redirect(destination)
+    except oidc.OidcError as exc:
+        models.db.session.rollback()
+        app.logger.info('OIDC authentication refused: %s', exc)
+        flask.flash(str(exc), 'error')
+        return redirect(flask.url_for('sso.login'))
 
-    device_cookie, device_cookie_username = utils.limiter.parse_device_cookie(flask.request.cookies.get('rate_limit'))
-    client_ip = flask.request.headers.get('X-Real-IP', flask.request.remote_addr)
-
-    if 'code' in flask.request.args:
-        user_data, token_response = utils.oidc_client.exchange_code(flask.request.query_string.decode())
-        username = user_data['email']
-        user_display_name = user_data['name']
-        if username != device_cookie_username and utils.limiter.should_rate_limit_ip(client_ip):
-            flask.flash('Too many attempts from your IP (rate-limit)', 'error')
-            return redirect('/login')
-        if utils.limiter.should_rate_limit_user(username, client_ip, device_cookie, device_cookie_username):
-            flask.flash('Too many attempts for this user (rate-limit)', 'error')
-            return redirect('/login')
-        if username is not None:
-            user = models.User.get(username)
-            # # If the user does not exist, create it with an empty password
-            # if user is None:
-            #     user = models.User.create(username)
-            # If the user does not exist, redirect to login
-            if user is None:
-                flask.flash('Wrong e-mail or password', 'error')
-                return redirect('/login')
-
-            if user.displayed_name != user_display_name:
-                # Update the display name if it has changed
-                user.set_display_name(user_display_name)
-                models.db.session.commit()
-
-            flask.session["oidc_token"] = token_response
-            flask.session.regenerate()
-            flask_login.login_user(user)
-            # Redirect to the admin interface by default
-            response = redirect(app.config['WEB_ADMIN'])
-            response.set_cookie('rate_limit', utils.limiter.device_cookie(username), max_age=31536000, path=flask.url_for('sso.login'), secure=app.config['SESSION_COOKIE_SECURE'], httponly=True)
-            flask.current_app.logger.info(f'Login succeeded for {username} from {client_ip}.')
-            return response
-        else:
-            utils.limiter.rate_limit_user(username, client_ip, device_cookie, device_cookie_username) if models.User.get(username) else utils.limiter.rate_limit_ip(client_ip)
-            flask.current_app.logger.warn(f'OIDC login failed for {username} from {client_ip}: exchanged code didn\'t return any username.')
-
-    # No code was provided, redirect to the OIDC provider
-    return redirect(utils.oidc_client.get_redirect_url())
 
 @sso.route('/pw_change', methods=['GET', 'POST'])
 @access.authenticated
@@ -139,36 +178,32 @@ def pw_change():
         if form.pw.data != form.pw2.data:
             flask.flash(_("The new passwords don't match"), "error")
             return flask.redirect(flask.url_for('sso.pw_change'))
-        user = models.User.login(flask_login.current_user.email, form.oldpw.data)
-        if user:
+        user = flask_login.current_user._get_current_object()
+        try:
+            with oidc.verify_operation('forced_password', user.email, form.oldpw.data):
+                user.set_password(form.pw.data, keep_sessions={flask.session.sid})
+                user.change_pw_next_login = False
+                models.db.session.commit()
+        except oidc.OidcError as exc:
+            flask.flash(str(exc), 'error')
+        else:
             flask.session.regenerate()
             flask_login.login_user(user)
-            user.set_password(form.pw.data, keep_sessions=set(flask.session))
-            user.change_pw_next_login = False
-            models.db.session.commit()
+
             flask.current_app.logger.info(f'Forced password change by {user} from: {client_ip}/{client_port}: success: password: {form.pwned.data}')
             destination = flask.session.pop('redirect_to', None) or app.config['WEB_ADMIN']
             return flask.redirect(destination)
-        flask.flash(_("The current password is incorrect!"), "error")
 
-    return flask.render_template('pw_change.html', form=form)
+    return flask.render_template('pw_change.html', form=form, reauth_url=flask.url_for('sso.oidc_reauthenticate', operation='forced_password'))
 
 @sso.route('/logout', methods=['GET'])
 @access.authenticated
 def logout():
-    # Commented out because it not only logs you out of admin cosole, 
-    # but also logs you out of OIDC provider
-    # if utils.oidc_client.is_enabled():
-    #     if 'oidc_token' not in flask.session:
-    #         return logout_internal()
-    #     if 'state' in flask.request.args and 'state' in flask.session:
-    #         if flask.args.get('state') == flask.session['state']:
-    #             logout_internal()
-    #     return redirect(utils.oidc_client.logout(flask.session['oidc_token']))
     return logout_internal()
-    
+
 
 def logout_internal():
+    oidc.clear_browser_state()
     flask_login.logout_user()
     flask.session.destroy()
     response = flask.redirect(app.config['PROXY_AUTH_LOGOUT_URL'] or flask.url_for('.login'))
@@ -185,7 +220,7 @@ def _has_usable_redirect(is_proxied=False):
         return None
     if url := flask.request.args.get('url'):
         target = urlparse(urljoin(flask.request.url, unquote(url)))
-        if target.netloc == urlparse(flask.request.url).netloc:
+        if target.scheme in {'http', 'https'} and target.netloc == urlparse(flask.request.url).netloc:
             return target.geturl()
     return None
 
@@ -209,6 +244,9 @@ def _proxy():
 
     user = models.User.get(email)
     if user:
+        if not user.enabled:
+            flask.abort(403)
+        oidc.clear_browser_state()
         flask.session.regenerate()
         flask_login.login_user(user)
         flask.current_app.logger.info(f'Login succeeded by proxy created user: {user} from {client_ip} through {flask.request.remote_addr}.')
@@ -232,6 +270,7 @@ def _proxy():
     user.set_password(secrets.token_urlsafe(), keep_sessions=set(flask.session))
     models.db.session.add(user)
     models.db.session.commit()
+    oidc.clear_browser_state()
     flask.session.regenerate()
     flask_login.login_user(user)
     user.send_welcome()

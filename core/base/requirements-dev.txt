@@ -3,6 +3,7 @@ libs/podop
 libs/socrate
 
 # core/admin
+oic==1.7.0
 alembic
 Babel
 bcrypt

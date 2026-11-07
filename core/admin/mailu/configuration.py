@@ -57,6 +57,7 @@ DEFAULT_CONFIG = {
     'GEOIP_SUSPICIOUS_COUNTRY_CODES': '',
     # OpenID Connect settings
     'OIDC_ENABLED': False,
+    'OIDC_AUTH_CREATE': False,
     'OIDC_PROVIDER_INFO_URL': 'https://localhost/info',
     'OIDC_CLIENT_ID': 'mailu',
     'OIDC_CLIENT_SECRET': 'secret',
@@ -167,6 +168,12 @@ class ConfigManager:
         if self.config['SESSION_COOKIE_SECURE'] is None:
             self.config['SESSION_COOKIE_SECURE'] = self.config['TLS_FLAVOR'] != 'notls'
         self.config['SESSION_PERMANENT'] = True
+        ttl = self.config['OIDC_INTROSPECTION_CACHE_TTL']
+        if isinstance(ttl, bool) or not str(ttl).isdigit():
+            raise ValueError('OIDC_INTROSPECTION_CACHE_TTL must be a nonnegative integer')
+        self.config['OIDC_INTROSPECTION_CACHE_TTL'] = int(ttl)
+        if not isinstance(self.config['OIDC_AUTH_CREATE'], bool):
+            raise ValueError('OIDC_AUTH_CREATE must be true or false')
         self.config['SESSION_TIMEOUT'] = int(self.config['SESSION_TIMEOUT'])
         self.config['SESSION_KEY_BITS'] = int(self.config['SESSION_KEY_BITS'])
         self.config['PERMANENT_SESSION_LIFETIME'] = int(self.config['PERMANENT_SESSION_LIFETIME'])

@@ -53,3 +53,13 @@ jobs:
           docker buildx build --platform linux/arm64 \
             --output type=cacheonly --progress plain \
             --file tests/release/arm-smoke.Dockerfile tests/release
+
+  oidc-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build isolated OIDC test environment
+        run: docker build -t mailu-oidc-tests -f tests/oidc/Dockerfile .
+      - name: Test real Mailu routes and pinned OIDC library
+        run: docker run --rm mailu-oidc-tests
