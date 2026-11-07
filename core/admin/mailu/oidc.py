@@ -21,6 +21,7 @@ from oic.oauth2.message import AccessTokenResponse, ROPCAccessTokenRequest
 from oic.oauth2.grant import Token
 from oic.extension.client import Client as ExtensionClient
 from oic.utils.authn.client import CLIENT_AUTHN_METHOD
+from oic.utils.keyio import UpdateFailed
 from oic.utils.settings import OicClientSettings, ClientSettings
 
 TRANSACTION_TTL = 300
@@ -215,6 +216,8 @@ class OidcClient:
             if live.get('oidc_binding') != tx['binding'] or live.get('_user_id') != tx['actor']:
                 raise OidcError('Initiating session changed during authentication')
             return {'email': email, 'name': (info.get('name') if isinstance(info.get('name'), str) else email)[:160]}, {**self._token(response, email), 'sub': identity['sub']}, tx
+        except UpdateFailed:
+            raise Unavailable('Identity provider signing keys are temporarily unavailable') from None
         except Unavailable:
             raise
         except Exception:
@@ -252,6 +255,8 @@ class OidcClient:
             if not info.get('sub') or normalize_email(info.get('email')) != username:
                 return None
             return {**self._token(response, username), 'sub': info['sub']}
+        except UpdateFailed:
+            raise Unavailable('Identity provider signing keys are temporarily unavailable') from None
         except Unavailable:
             raise
         except Exception:
@@ -281,6 +286,8 @@ class OidcClient:
                 token = self._token(response, token['email'], token)
                 # Retain rotated credentials even if the following introspection is down.
                 flask.session['oidc_token'] = token
+            except UpdateFailed:
+                raise Unavailable('Identity provider signing keys are temporarily unavailable') from None
             except Unavailable:
                 raise
             except Exception:
@@ -301,6 +308,8 @@ class OidcClient:
                 until = min(until, exp)
             token = {**token, 'checked_until': until}
             return token
+        except UpdateFailed:
+            raise Unavailable('Identity provider signing keys are temporarily unavailable') from None
         except Unavailable:
             raise
         except OidcError:

@@ -42,6 +42,7 @@ class FakeIdP:
         self.signing_key = self.key
         self.missing_refresh = False
         self.introspection_claims = {}
+        self.refresh_id_token = False
 
     def request(self, method, url, **kwargs):
         path = urlsplit(url).path
@@ -77,7 +78,7 @@ class FakeIdP:
                 data = {'access_token': 'access-1', 'token_type': 'Bearer', 'expires_in': 300}
                 if not self.missing_refresh and (grant != 'refresh_token' or self.rotate):
                     data['refresh_token'] = 'refresh-2' if self.rotate else 'refresh-1'
-                if grant == 'authorization_code':
+                if grant == 'authorization_code' or (grant == 'refresh_token' and self.refresh_id_token):
                     now = int(time.time())
                     claims = {'iss': ISSUER, 'aud': ['mailu'], 'sub': self.sub, 'iat': now,
                               'exp': now + 300, 'nonce': self.nonce, 'auth_time': now}
@@ -502,6 +503,16 @@ class OidcTests(unittest.TestCase):
             self.assertNotIn('oidc_token',session)
             self.assertNotIn('auth_origin',session)
         self.idp.outage.add('/introspect')
+        self.assertEqual(self.client.get('/admin/').status_code,302)
+
+
+    def test_refresh_signing_key_outage_is_temporary(self):
+        self.login();self.idp.refresh_id_token=True;self.idp.outage.add('/jwks')
+        with self.client.session_transaction() as session:
+            session['oidc_token']={**session['oidc_token'],'expires_at':0}
+        self.assertEqual(self.client.get('/admin/').status_code,503)
+        with self.client.session_transaction() as session:self.assertIn('oidc_token',session)
+        self.idp.outage.clear()
         self.assertEqual(self.client.get('/admin/').status_code,302)
 
     def test_cache_ttl_validation(self):
