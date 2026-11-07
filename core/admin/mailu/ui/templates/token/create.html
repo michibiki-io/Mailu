@@ -7,3 +7,10 @@
 {%- block subtitle %}
 {{ user }}
 {%- endblock %}
+
+{% block content %}
+{{ super() }}
+{% if config['OIDC_ENABLED'] and reauth_url %}
+<p><a href="{{ reauth_url }}">{% trans %}Verify again with OpenID Connect instead of a local password{% endtrans %}</a></p>
+{% endif %}
+{% endblock %}

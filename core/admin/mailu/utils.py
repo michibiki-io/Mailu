@@ -31,23 +31,13 @@ import ipaddress
 import redis
 import requests
 
-from flask import session as f_session
-
 from datetime import datetime, timedelta
 from flask.sessions import SessionMixin, SessionInterface
 from itsdangerous.encoding import want_bytes
 from werkzeug.datastructures import CallbackDict
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from oic.oic import Client
-from oic.oic import Token as oicToken
-from oic.oic import Grant
-from oic.extension.client import Client as ExtensionClient
-from oic.utils.authn.client import CLIENT_AUTHN_METHOD
-from oic import rndstr
-from oic.oauth2.message import ROPCAccessTokenRequest, AccessTokenResponse
-from oic.oic.message import AuthorizationResponse, RegistrationResponse, EndSessionRequest
-from oic.oauth2.grant import Token
+from mailu.oidc import oidc_client
 
 # Login configuration
 login = flask_login.LoginManager()
@@ -162,183 +152,6 @@ class PrefixMiddleware(object):
 proxy = PrefixMiddleware()
 
 
-class OidcClient:
-    """ Redirects users to OpenID Client provider if configured """
-
-    def __init__(self):
-        self.app = None
-        self.client = None
-        self.extension_client = None
-        self.registration_response = None
-        self.introspection_cache = {}
-
-    def init_app(self, app):
-        """ initialize the OpenID Connect client """
-        self.app = app
-        try:
-            self.client = Client(client_authn_method=CLIENT_AUTHN_METHOD)
-            self.client.provider_config(app.config['OIDC_PROVIDER_INFO_URL'])
-            self.extension_client = ExtensionClient(client_authn_method=CLIENT_AUTHN_METHOD)
-            self.extension_client.provider_config(app.config['OIDC_PROVIDER_INFO_URL'])
-            info = {
-                "client_id": app.config['OIDC_CLIENT_ID'],
-                "client_secret": app.config['OIDC_CLIENT_SECRET'],
-                "redirect_uris": [ f"https://{self.app.config['OIDC_REDIRECT_HOST']}/sso/login" ]
-            }
-            client_reg = RegistrationResponse(**info)
-            self.client.store_registration_info(client_reg)
-            self.extension_client.store_registration_info(client_reg)
-        except Exception as e:
-            app.logger.warning(f'Error while initializing OIDC client, reason: {e}')
-            self.client = None
-            self.extension_client = None
-            self.registration_response = None
-            app.config['OIDC_ENABLED'] = False
-
-    def get_redirect_url(self):
-        """ returns the URL to redirect the user to the OpenID Provider """
-        if not self.is_enabled():
-            return None
-        f_session["state"] = rndstr()
-        f_session["nonce"] = rndstr()
-        args = {
-            "client_id": self.client.client_id,
-            "response_type": ["code"],
-            "scope": ["openid email profile"],
-            "nonce": f_session["nonce"],
-            "redirect_uri": f"https://{self.app.config['OIDC_REDIRECT_HOST']}/sso/login/oidc",
-            "state": f_session["state"]
-        }
-
-        auth_req = self.client.construct_AuthorizationRequest(request_args=args)
-        login_url = auth_req.request(self.client.authorization_endpoint)
-        return login_url
-
-    def exchange_code(self, query):
-        """ exchanges the code for an access token """
-        aresp = self.client.parse_response(AuthorizationResponse, info=query, sformat="urlencoded")
-        if not ("state" in f_session and aresp["state"] == f_session["state"]):
-            app.logger.warning('Error while retrieving the access token: state mismatch')
-            return None, None
-        args = {
-            "code": aresp["code"]
-        }
-        response = self.client.do_access_token_request(
-            state=aresp["state"],
-            request_args=args,
-            authn_method="client_secret_basic"
-        )
-        if 'access_token' not in response or not isinstance(response, AccessTokenResponse):
-            return None, None
-        user_response = self.client.do_user_info_request(
-            access_token=response['access_token'])
-        user_data = {
-            "email": user_response['email'],
-            "name": user_response['name'] if 'name' in user_response else user_response['email'],
-        }
-        return user_data, Token(response)
-
-    def get_token(self, username, password):
-        """ gets an access token for the given username and password """
-        args = {
-            "username": username,
-            "password": password,
-            "client_id": self.extension_client.client_id,
-            "client_secret": self.extension_client.client_secret,
-            "grant_type": "password"
-        }
-        url, body, ht_args, csi = self.extension_client.request_info(
-            ROPCAccessTokenRequest,
-            request_args=args,
-            method="POST"
-        )
-        response = self.extension_client.request_and_return(url, AccessTokenResponse, "POST", body, "json", "", ht_args)
-        if isinstance(response, AccessTokenResponse):
-            return Token(response)
-        return None
-        
-
-    def get_user_info(self, token):
-        """ gets the user info for the given token """
-        return self.client.do_user_info_request(access_token=token.access_token)
-
-    def check_validity(self, token):
-        """ checks if the token is still valid, if not, refreshes it and returns the new token """
-        access_token = token.access_token
-        if access_token:
-            cache_entry = self.introspection_cache.get(access_token)
-            if cache_entry:
-                now = time.time()
-                if cache_entry.get("expires_at", 0) > now:
-                    if cache_entry.get("active"):
-                        return token
-                    return self.refresh_token(token)
-                self.introspection_cache.pop(access_token, None)
-        try:
-            args = {
-                "client_id": self.extension_client.client_id,
-                "client_secret": self.extension_client.client_secret,
-                "token": token.access_token,
-                "token_type_hint": "access_token"
-            }
-            response = self.extension_client.do_token_introspection(request_args=args, authn_method="client_secret_basic")
-            if 'active' in response and response['active'] is True:
-                ttl = app.config.get('OIDC_INTROSPECTION_CACHE_TTL', 0)
-                if ttl and access_token:
-                    self.introspection_cache[access_token] = {
-                        "active": True,
-                        "expires_at": time.time() + ttl,
-                    }
-            else:
-                self.introspection_cache.pop(access_token, None)
-            if ('active' in response and response['active'] == False) or 'active' not in response:
-                return self.refresh_token(token)
-        except:
-            return self.refresh_token(token)
-        return token
-
-    def refresh_token(self, token):
-        """ Refreshes the token if possible """
-        try:
-            args = {
-                "refresh_token": token.refresh_token
-            }
-            response = self.client.do_access_token_refresh(request_args=args, token=token)
-            if isinstance(response, AccessTokenResponse):
-                return Token(response)
-            else:
-                app.logger.error("No access_token is found in do_access_token_refresh response.")
-                return None
-        except Exception as e:
-            app.logger.error(e)
-            return None
-
-    def logout(self, token):
-        """ Performs a logout"""
-        state = rndstr()
-        f_session['state'] = state
-        self.client.grant[state] = Grant()
-        self.client.grant[state].grant_expiration_time = int(time.time() + 30)
-        self.client.grant[state].code = "access_code"
-        self.client.grant[state].tokens.append(oicToken(token))
-        args = {
-            "state": state,
-            "post_logout_redirect_uri": f"https://{app.config['OIDC_REDIRECT_HOST']}/sso/logout",
-            "client_id": self.client.client_id
-        }
-
-        request = self.client.construct_EndSessionRequest(request_args=args)
-        uri, body, h_args, cis = self.client.uri_and_body(EndSessionRequest, method="GET", request_args=args, cis=request)
-        return uri
-
-    def is_enabled(self):
-        """ returns true if the OpenID Connect client is enabled, false otherwise """
-        return self.app is not None and self.app.config['OIDC_ENABLED']
-
-# Create the OIC client
-oidc_client = OidcClient()
-
-
 # Data migrate
 migrate = flask_migrate.Migrate()
 
@@ -367,6 +180,12 @@ class RedisStore:
         """ delete item from store. """
         self.redis.delete(key)
 
+    def take(self, key):
+        value = self.redis.eval("local v = redis.call('GET', KEYS[1]); redis.call('DEL', KEYS[1]); return v", 1, key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
     def list(self, prefix=None):
         """ return list of keys starting with prefix """
         if prefix:
@@ -378,21 +197,38 @@ class DictStore:
 
     def __init__(self):
         self.dict = {}
+        self.expiry = {}
+        import threading
+        self.lock = threading.RLock()
 
     def get(self, key):
         """ load item from store. """
-        return self.dict[key]
+        with self.lock:
+            if self.expiry.get(key, float("inf")) <= time.time():
+                self.delete(key)
+            return self.dict[key]
 
     def put(self, key, value, ttl=None):
         """ save item to store. """
-        self.dict[key] = value
+        with self.lock:
+            for expired in [k for k, until in self.expiry.items() if until <= time.time()]:
+                self.delete(expired)
+            self.dict[key] = value
+            self.expiry[key] = time.time() + ttl if ttl else float("inf")
 
     def delete(self, key):
         """ delete item from store. """
         try:
             del self.dict[key]
+            self.expiry.pop(key, None)
         except KeyError:
             pass
+
+    def take(self, key):
+        with self.lock:
+            value = self.get(key)
+            self.delete(key)
+            return value
 
     def list(self, prefix=None):
         """ return list of keys starting with prefix """
@@ -646,6 +482,8 @@ class MailuSessionExtension:
 
         count = 0
         for key in app.session_store.list():
+            if key.startswith(b'oidc-'):
+                continue  # OIDC transient records have their own bounded Redis TTL
             if key.startswith(b'token-'):
                 if sessid := app.session_store.get(key):
                     if not app.session_config.parse_key(sessid, app, now=now):
@@ -675,7 +513,7 @@ class MailuSessionExtension:
 
         count = 0
         for key in app.session_store.list(prefix):
-            if key not in keep and not key.startswith(b'token-'):
+            if key not in keep and not key.startswith((b'token-', b'oidc-')):
                 app.session_store.delete(key)
                 count += 1
 

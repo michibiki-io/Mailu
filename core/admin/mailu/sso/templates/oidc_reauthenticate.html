@@ -1,0 +1,6 @@
+{% extends "base_sso.html" %}
+{% block content %}
+<p>{% trans %}Verify your identity with OpenID Connect, then return to finish the operation. Enter the new password or token details after returning.{% endtrans %}</p>
+<form method="post">{{ form.hidden_tag() }}<button type="submit">{% trans %}Verify with OpenID Connect{% endtrans %}</button></form>
+<p><a href="{{ destination }}">{% trans %}Cancel{% endtrans %}</a></p>
+{% endblock %}

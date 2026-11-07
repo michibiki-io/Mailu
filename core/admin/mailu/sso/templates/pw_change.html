@@ -9,5 +9,8 @@
   {{ macros.form_field(form.pw2) }}
   {{ macros.form_field(form.submit) }}
 </form>
+{% if config['OIDC_ENABLED'] %}
+<p><a href="{{ reauth_url }}">{% trans %}Verify again with OpenID Connect instead of a local password{% endtrans %}</a></p>
+{% endif %}
 {%- endcall %}
 {%- endblock %}

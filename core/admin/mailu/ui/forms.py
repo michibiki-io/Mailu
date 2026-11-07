@@ -131,7 +131,7 @@ class UserPasswordForm(flask_wtf.FlaskForm):
     submit = fields.SubmitField(_('Update password'))
 
 class UserPasswordChangeForm(flask_wtf.FlaskForm):
-    current_pw = fields.PasswordField(_('Current password'), [validators.DataRequired()])
+    current_pw = fields.PasswordField(_('Current local password'), [validators.Optional()])
     pw = fields.PasswordField(_('Password'), [validators.DataRequired()])
     pw2 = fields.PasswordField(_('Password check'), [validators.DataRequired()])
     pwned = fields.HiddenField(label='', default=-1)
@@ -148,6 +148,7 @@ class UserReplyForm(flask_wtf.FlaskForm):
 
 
 class TokenForm(flask_wtf.FlaskForm):
+    current_pw = fields.PasswordField(_('Current local password'), [validators.Optional()])
     displayed_password = fields.StringField(
         _('Your token (write it down, as it will never be displayed again)')
     )

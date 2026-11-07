@@ -12,7 +12,7 @@ class LoginForm(flask_wtf.FlaskForm):
     submitAdmin = fields.SubmitField(_('Sign in'))
 
 class PWChangeForm(flask_wtf.FlaskForm):
-    oldpw = fields.PasswordField(_('Current password'), [validators.DataRequired()])
+    oldpw = fields.PasswordField(_('Current local password'), [validators.Optional()])
     pw = fields.PasswordField(_('New password'), [validators.DataRequired()])
     pw2 = fields.PasswordField(_('New password (again)'), [validators.DataRequired()])
     pwned = fields.HiddenField(label='', default=-1)
