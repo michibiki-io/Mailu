@@ -18,9 +18,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Test release selection and non-publishing image plans
         run: python3 -m unittest discover -s tests/release -v
       - name: Check shell syntax
@@ -43,11 +43,11 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify native ARM64 runner
         run: test "$(uname -m)" = aarch64
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Build native arm64 smoke image
         run: |
           docker buildx build --platform linux/arm64 \

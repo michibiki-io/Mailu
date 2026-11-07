@@ -159,3 +159,8 @@ the native host architecture and builds a minimal arm64 image without
 publishing anything or registering QEMU. The smoke Dockerfile checks the
 architecture reported inside the build stage. Full Mailu image build times are measured by
 the release workflow after merge, not by this smoke check.
+
+Workflow JavaScript actions use Node.js 24-compatible majors: checkout v7,
+Docker Buildx setup and registry login v4, and retry v4. Self-hosted runner
+overrides must support these action runtimes. Owner-name lowercasing uses Bash,
+and registry build caches do not require the GitHub runtime-export helper.
