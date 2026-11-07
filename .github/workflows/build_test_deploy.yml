@@ -15,9 +15,9 @@ on:
   workflow_call:
     inputs:
       architecture:
-        description: 'The architecture(s) of the images that will be build. linux/amd64 or linux/arm64/v8,linux/arm/v7 or linux/amd64,linux/arm64/v8,linux/arm/v7'
+        description: 'The architecture(s) of the images that will be build. linux/amd64, linux/arm64 (or linux/arm64/v8), or a comma-separated combination'
         required: false
-        default: 'linux/amd64,linux/arm64/v8,linux/arm/v7'
+        default: 'linux/amd64,linux/arm64/v8'
         type: string
       mailu_version:
         description: 'The main version that is build. E.g. master or x.y.'
@@ -64,9 +64,9 @@ on:
   workflow_dispatch:
     inputs:
       architecture:
-        description: 'The architecture(s) of the images that will be build. linux/amd64 or linux/arm64/v8,linux/arm/v7 or linux/amd64,linux/arm64/v8,linux/arm/v7'
+        description: 'The architecture(s) of the images that will be build. linux/amd64, linux/arm64 (or linux/arm64/v8), or a comma-separated combination'
         required: false
-        default: 'linux/amd64,linux/arm64/v8,linux/arm/v7'
+        default: 'linux/amd64,linux/arm64/v8'
         type: string
       mailu_version:
         description: 'The main version that is build. E.g. master or x.y.'
@@ -143,7 +143,7 @@ jobs:
           test "${#platforms[@]}" -gt 0
           for platform in "${platforms[@]}"; do
             case "$platform" in
-              linux/amd64|linux/arm64|linux/arm64/v8|linux/arm/v7) ;;
+              linux/amd64|linux/arm64|linux/arm64/v8) ;;
               *) echo "Unsupported platform: $platform" >&2; exit 1 ;;
             esac
           done
@@ -179,8 +179,6 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
@@ -241,19 +239,26 @@ jobs:
 
 # This job builds the OIDC base image. UI assets are reused from upstream. The build cache is stored in the ghcr.io registry.
   build-base-assets-arm:
-    name: ARM - build OIDC base
+    name: ARM64 - build OIDC base
     needs: targets
-    if: (contains(inputs.architecture, 'linux/arm64') || contains(inputs.architecture, 'linux/arm/v7'))
+    if: contains(inputs.architecture, 'linux/arm64')
     strategy:
       fail-fast: false
       matrix:
         target: ["base"]
-    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || 'ubuntu-24.04-arm' }}
     permissions:
      contents: read
      packages: write
     steps:
       - uses: actions/checkout@v4
+      - name: Verify native ARM64 runner
+        run: |
+          architecture=$(uname -m)
+          if [ "$architecture" != aarch64 ]; then
+            echo "ARM jobs require an ARM64 runner; got $architecture. Check ACTIONS_RUNNER_ARM64." >&2
+            exit 1
+          fi
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -261,8 +266,6 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
@@ -283,7 +286,7 @@ jobs:
           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}-build-${{ github.run_id }}-arm
           LABEL_VERSION: ${{ env.MAILU_VERSION }}
           PINNED_LABEL_VERSION: ${{ env.PINNED_MAILU_VERSION }}
-          ARCH: ${{ contains(inputs.architecture, 'linux/arm64') && (contains(inputs.architecture, 'linux/arm/v7') && 'linux/arm64/v8,linux/arm/v7' || 'linux/arm64/v8') || 'linux/arm/v7' }}
+          ARCH: 'linux/arm64/v8'
           BUILDER: ${{ steps.uuid.outputs.uuid }}
           DOCKER_LOGIN2: ${{ secrets.Docker_Login2 }}
           DOCKER_PASSW2: ${{ secrets.Docker_Password2 }}
@@ -340,8 +343,6 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
@@ -402,8 +403,8 @@ jobs:
 
 # This job builds the main images. The build cache is stored in the ghcr.io registry.
   build-arm:
-    name: ARM - build
-    if: (contains(inputs.architecture, 'linux/arm64') || contains(inputs.architecture, 'linux/arm/v7'))
+    name: ARM64 - build
+    if: contains(inputs.architecture, 'linux/arm64')
     needs:
       - targets
       - build-base-assets-arm
@@ -411,12 +412,19 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.targets.outputs.matrix) }}
-    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.ACTIONS_RUNNER_ARM64 || 'ubuntu-24.04-arm' }}
     permissions:
      contents: read
      packages: write
     steps:
       - uses: actions/checkout@v4
+      - name: Verify native ARM64 runner
+        run: |
+          architecture=$(uname -m)
+          if [ "$architecture" != aarch64 ]; then
+            echo "ARM jobs require an ARM64 runner; got $architecture. Check ACTIONS_RUNNER_ARM64." >&2
+            exit 1
+          fi
       - name: Retrieve global variables
         shell: bash
         run: |
@@ -424,8 +432,6 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
@@ -446,7 +452,7 @@ jobs:
           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}-build-${{ github.run_id }}-arm
           LABEL_VERSION: ${{ env.MAILU_VERSION }}
           PINNED_LABEL_VERSION: ${{ env.PINNED_MAILU_VERSION }}
-          ARCH: ${{ contains(inputs.architecture, 'linux/arm64') && (contains(inputs.architecture, 'linux/arm/v7') && 'linux/arm64/v8,linux/arm/v7' || 'linux/arm64/v8') || 'linux/arm/v7' }}
+          ARCH: 'linux/arm64/v8'
           BUILDER: ${{ steps.uuid.outputs.uuid }}
           DOCKER_LOGIN2: ${{ secrets.Docker_Login2 }}
           DOCKER_PASSW2: ${{ secrets.Docker_Password2 }}
@@ -509,8 +515,6 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context
@@ -548,7 +552,7 @@ jobs:
       needs.targets.result == 'success' &&
       !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
       (!contains(inputs.architecture, 'linux/amd64') || needs.build.result == 'success') &&
-      (!(contains(inputs.architecture, 'linux/arm64') || contains(inputs.architecture, 'linux/arm/v7')) || needs.build-arm.result == 'success')
+      (!contains(inputs.architecture, 'linux/arm64') || needs.build-arm.result == 'success')
     runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     needs:
       - targets
@@ -568,8 +572,6 @@ jobs:
           echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
           echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
           echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - uses: crazy-max/ghaction-github-runtime@v3
       - name: Set up Docker Context for Buildx
         id: buildx-context

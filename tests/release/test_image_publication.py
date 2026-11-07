@@ -21,9 +21,8 @@ class PublicationTest(unittest.TestCase):
                        DESTINATION=image, SOURCE=image, VERSION="2024.06",
                        PINNED_VERSION="2024.06.67", GITHUB_RUN_ID="123", DOCKER_ARGS=temp + "/args")
             for platforms, suffixes in [
-                ("linux/amd64", [""]), ("linux/arm64/v8", ["-arm"]),
-                ("linux/arm/v7", ["-arm"]),
-                ("linux/amd64,linux/arm64/v8,linux/arm/v7", ["", "-arm"]),
+                ("linux/amd64", [""]), ("linux/arm64", ["-arm"]), ("linux/arm64/v8", ["-arm"]),
+                ("linux/amd64,linux/arm64/v8", ["", "-arm"]),
             ]:
                 for pinned in ("true", "false"):
                     with self.subTest(platforms=platforms, publish_pinned=pinned):
@@ -39,8 +38,8 @@ class PublicationTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("docker"), "Docker Buildx is required for Bake plan validation")
     def test_bake_uses_only_oidc_images_and_matching_upstream_assets(self):
-        for platforms in ["linux/amd64", "linux/arm64/v8", "linux/arm/v7",
-                          "linux/amd64,linux/arm64/v8,linux/arm/v7"]:
+        for platforms in ["linux/amd64", "linux/arm64", "linux/arm64/v8",
+                          "linux/amd64,linux/arm64/v8"]:
             with self.subTest(platforms=platforms):
                 env = dict(os.environ, ARCH=platforms, DOCKER_ORG="ghcr.io/fork", DOCKER_PREFIX="mailu-",
                            MAILU_VERSION="2024.06-build-123", PINNED_MAILU_VERSION="2024.06.67-build-123",

@@ -9,7 +9,7 @@ sources=()
 if [[ "$ARCHITECTURES" == *linux/amd64* ]]; then
   sources+=("$SOURCE:$VERSION-build-$GITHUB_RUN_ID")
 fi
-if [[ "$ARCHITECTURES" == *linux/arm64* || "$ARCHITECTURES" == *linux/arm/v7* ]]; then
+if [[ "$ARCHITECTURES" == *linux/arm64* ]]; then
   sources+=("$SOURCE:$VERSION-build-$GITHUB_RUN_ID-arm")
 fi
 docker buildx imagetools create "${tags[@]}" "${sources[@]}"

@@ -118,11 +118,18 @@ Unchanged static files are copied from the matching fixed upstream image
 the upstream release images. Local builds using ``tests/build.hcl`` continue
 to build their own UI assets.
 
-Both the base and admin builds support ``linux/amd64``, ``linux/arm64/v8``, and
-``linux/arm/v7``. ARM builds use QEMU on a GitHub-hosted Ubuntu runner by default;
-no upstream self-hosted runner is required. Optionally set ``ACTIONS_RUNNER``
-and ``ACTIONS_RUNNER_ARM64`` repository variables to Docker-capable runner labels.
-QEMU is still configured for arm/v7 when using a native arm64 runner.
+Both the base and admin builds support ``linux/amd64`` and ``linux/arm64/v8``
+(``linux/arm64`` is also accepted as input). arm/v7 is no longer built or
+included in new manifests; a dispatch requesting it fails input validation.
+Previously published fixed image tags are preserved under the existing policy.
+
+ARM jobs default to the GitHub-hosted ``ubuntu-24.04-arm`` runner, so arm64
+builds run natively. ARM jobs do not fall back to the generic ``ACTIONS_RUNNER``
+variable. Optionally set ``ACTIONS_RUNNER_ARM64`` to a Docker-capable native
+ARM64 runner label; a different host architecture fails with a diagnostic
+instead of silently emulating arm64. Other jobs continue to use
+``ACTIONS_RUNNER`` with the existing hosted Ubuntu fallback. Neither supported
+platform requires QEMU, and the workflows do not install it.
 
 The workflow uses ``GITHUB_TOKEN`` with explicit ``packages: write`` permission
 for GHCR and ``contents: write`` permission for tags and GitHub releases.
@@ -131,7 +138,7 @@ secrets (``Docker_Login`` / ``Docker_Password`` and the ARM equivalents ending
 in ``2``) are optional and only increase the authenticated pull allowance.
 
 ``build-test-deploy`` remains available through manual dispatch. For an ARM-only
-build, either ARM platform can be selected independently. Set ``publish_pinned``
+build, select ``linux/arm64`` or ``linux/arm64/v8``. Set ``publish_pinned``
 to ``false`` to preserve an existing fixed image tag. Manual dispatch defaults
 the upstream assets image to ``ghcr.io/mailu/admin:<pinned_mailu_version>``;
 ``upstream_admin_image`` can override this for custom tags. Intermediate image
@@ -146,3 +153,9 @@ Pull requests targeting ``2024.06`` and pushes to ``feature/**`` run
 ``Validate fork workflows``. This read-only workflow checks release-selection
 regressions, Bake platform/image plans, publication command arguments, and
 workflow/shell syntax; it neither builds final images nor publishes packages.
+
+PR validation also runs ``arm-build-smoke`` on ``ubuntu-24.04-arm``. It verifies
+the native host architecture and builds a minimal arm64 image without
+publishing anything or registering QEMU. The smoke Dockerfile checks the
+architecture reported inside the build stage. Full Mailu image build times are measured by
+the release workflow after merge, not by this smoke check.
