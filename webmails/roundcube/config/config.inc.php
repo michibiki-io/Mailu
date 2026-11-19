@@ -57,7 +57,7 @@ $config['managesieve_mbox_encoding'] = 'UTF8';
 // roundcube customization
 $config['product_name'] = 'Mailu Webmail';
 {%- if ADMIN and WEB_ADMIN %}
-$config['support_url'] = '../..{{ WEB_ADMIN }}';
+$config['support_url'] = '{{ "" if WEB_BASE_PATH else "../.." }}{{ WEB_ADMIN }}';
 {%- endif %}
 $config['plugins'] = array({{ PLUGINS }});
 
@@ -65,7 +65,7 @@ $config['plugins'] = array({{ PLUGINS }});
 $config['skin'] = 'elastic';
 
 // configure mailu sso plugin
-$config['sso_logout_url'] = '/sso/logout';
+$config['sso_logout_url'] = '{{ WEB_BASE_PATH }}/sso/logout';
 
 // configure enigma gpg plugin
 $config['enigma_pgp_homedir'] = '/data/gpg';

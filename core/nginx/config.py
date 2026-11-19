@@ -3,7 +3,7 @@
 import os
 import logging as log
 import sys
-from socrate import system, conf
+from socrate import system, conf, web
 
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -60,6 +60,7 @@ tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 ''')
 
 args = system.set_env(cleanup_pids=False)
+web.mount_paths(args, web.base_path())
 log.basicConfig(stream=sys.stderr, level=args.get("LOG_LEVEL", "WARNING"))
 
 args['TLS_PERMISSIVE'] = str(args.get('TLS_PERMISSIVE')).lower() not in ('false', 'no')

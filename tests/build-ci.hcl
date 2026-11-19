@@ -44,7 +44,7 @@ variable "PINNED_LABEL_VERSION" {
 #-----------------------------------------------------------------------------------------
 group "default" {
   targets = [
-    "admin"
+    "admin", "front", "webmail"
   ]
 }
 

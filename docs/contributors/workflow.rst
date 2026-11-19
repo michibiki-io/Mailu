@@ -81,49 +81,29 @@ be glad if you let us know so that we can list interesting known forks and
 their specific features (and backport some of them if your implementation
 is free as well).
 
-OIDC fork image workflow
-------------------------
+Fork image workflow
+-------------------
 
-This fork publishes ``ghcr.io/<repository-owner>/mailu-admin`` on pushes to
-``2024.06``, including merges that import upstream changes. The GitHub default
-branch can remain ``master``. The workflow reads published releases from
-``Mailu/Mailu`` and selects the highest numbered ``2024.06.<patch>`` release
-whose tag commit is an ancestor of both the fork commit and the upstream
-``2024.06`` branch. Unmerged releases and unpublished tags are excluded.
-Upstream tags are fetched into a separate namespace so the fork's release tags
-can point to commits that include OIDC support.
+Pushes to the fork's ``2024.06`` branch build the admin, nginx, and webmail
+images. The workflow selects the latest published ``2024.06.<patch>``
+release whose tag is in both the fork commit and upstream release branch.
+It uses that upstream version for the admin UI assets and for the services
+that still run upstream images.
 
-For example, after merging upstream ``2024.06.67``, the workflow publishes
-``mailu-admin:2024.06.67``, ``mailu-admin:2024.06``, and ``mailu-admin:latest``,
-then creates the fork's ``2024.06.67`` Git tag and GitHub Release. It does not
-increment the upstream version number or merge upstream changes automatically.
-If no published upstream release is included, the workflow fails before building.
+The first fork release based on ``2024.06.71`` uses ``2024.06.71-r1``
+as the Git tag, GitHub Release, and tag for all three fork images. Further
+fork releases on that base increment the revision. A new upstream patch
+starts at ``r1``. Previously published unqualified tags remain pinned to
+their original releases.
 
-Git tag and GitHub Release creation require a new-release instruction and
-successful image publication in a non-cancelled workflow. Intentionally skipped
-optional jobs, such as opt-in integration tests or an unrequested architecture,
-do not block Release creation after publication succeeds. Failed, cancelled or
-skipped publication never creates a Release. Release notes are created with the
-Release; the upstream version and existing fixed-tag protection below still apply.
-
-Once a fork release exists, its Git tag and fixed image tag remain unchanged;
-subsequent OIDC changes update only ``2024.06`` and ``latest``. The workflow also
-checks GHCR directly: fixed images published previously through dispatch are
-preserved even if no Git tag or GitHub Release exists. Such legacy images do not
-get a retroactive GitHub Release associated with the current commit. Registry
-authentication and network errors stop the workflow instead of being treated
-as an unpublished version. An imported
-upstream Git tag with the same name but a different commit blocks a new fork
-release and requires the tag collision to be resolved explicitly. Tags are
-never force-pushed.
-
-Only ``admin`` is a final build target. The intermediate ``base`` image is
-also built because ``core/base/requirements-prod.txt`` adds the OIDC library.
-Unchanged static files are copied from the matching fixed upstream image
-(for example ``ghcr.io/mailu/admin:2024.06.67``), passed through the
-``UPSTREAM_ADMIN_IMAGE`` Bake variable. Other services should keep using
-the upstream release images. Local builds using ``tests/build.hcl`` continue
-to build their own UI assets.
+The live branch tip can resume publishing its revision. The workflow reuses
+existing fixed images only when their revision annotation matches the commit
+and their index includes both supported architectures. A newer tip skips
+revisions reserved by coherent earlier commits and preserves their artifacts.
+The workflow stops when it cannot verify provenance or a tag's image set.
+After all three images are verified, it creates the Git tag and GitHub
+Release, then promotes the admin aliases ``2024.06`` and ``latest``.
+Deploy the subpath images with their fixed tags. See :doc:`../web-subpath`.
 
 Both the base and admin builds support ``linux/amd64`` and ``linux/arm64/v8``
 (``linux/arm64`` is also accepted as input). arm/v7 is no longer built or
@@ -144,22 +124,20 @@ Existing packages must grant this repository Actions access. Docker Hub login
 secrets (``Docker_Login`` / ``Docker_Password`` and the ARM equivalents ending
 in ``2``) are optional and only increase the authenticated pull allowance.
 
-``build-test-deploy`` remains available through manual dispatch. For an ARM-only
-build, select ``linux/arm64`` or ``linux/arm64/v8``. Set ``publish_pinned``
-to ``false`` to preserve an existing fixed image tag. Manual dispatch defaults
-the upstream assets image to ``ghcr.io/mailu/admin:<pinned_mailu_version>``;
-``upstream_admin_image`` can override this for custom tags. Intermediate image
-tags include the workflow run ID, and ``latest`` is updated only after all
-requested platforms finish and their manifests are combined. Dispatches and
-push builds serialize publication for the same Git ref.
+``build-test-deploy`` remains available through manual dispatch for builds.
+For an ARM-only build, select ``linux/arm64`` or ``linux/arm64/v8``.
+The default assets image is ``ghcr.io/mailu/admin:<pinned_mailu_version>``;
+``upstream_admin_image`` overrides it. Manual builds use tags containing the
+workflow run ID. A release-branch push or a rerun of that push can publish
+fixed and rolling tags while its commit is still the branch tip.
 
 The inherited integration tests are opt-in and require the complete upstream
-service image set; the OIDC-only build does not create that set.
+service image set. The fork build supplies only the three Web UI images.
 
 Pull requests targeting ``2024.06`` and pushes to ``feature/**`` run
 ``Validate fork workflows``. This read-only workflow checks release-selection
 regressions, Bake platform/image plans, publication command arguments, and
-workflow/shell syntax; it neither builds final images nor publishes packages.
+workflow syntax; it neither builds final images nor publishes packages.
 
 PR validation also runs ``arm-build-smoke`` on ``ubuntu-24.04-arm``. It verifies
 the native host architecture and builds a minimal arm64 image without

@@ -6,6 +6,7 @@ import flask_bootstrap
 
 from mailu import utils, debug, models, manage, configuration
 from gunicorn import glogging
+from socrate import web
 import logging
 
 import hmac
@@ -36,7 +37,8 @@ class Logger(glogging.Logger):
 def create_app_from_config(config):
     """ Create a new application based on the given configuration
     """
-    app = flask.Flask(__name__, static_folder='static', static_url_path='/static')
+    prefix = web.base_path()
+    app = flask.Flask(__name__, static_folder='static', static_url_path=prefix + '/static')
     app.cli.add_command(manage.mailu)
 
     # Bootstrap is used for error display and flash messages
@@ -44,6 +46,9 @@ def create_app_from_config(config):
 
     # Initialize application extensions
     config.init_app(app)
+    web.mount_paths(app.config, prefix)
+    if prefix:
+        app.config['SESSION_COOKIE_PATH'] = prefix
     models.db.init_app(app)
     utils.session.init_app(app)
     utils.limiter.init_app(app)
@@ -115,7 +120,7 @@ def create_app_from_config(config):
     from mailu import ui, internal, sso, api
     app.register_blueprint(ui.ui, url_prefix=app.config['WEB_ADMIN'])
     app.register_blueprint(internal.internal, url_prefix='/internal')
-    app.register_blueprint(sso.sso, url_prefix='/sso')
+    app.register_blueprint(sso.sso, url_prefix=prefix + '/sso')
     api.register(app, web_api_root=app.config.get('WEB_API'))
     return app
 

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def release_condition():
     workflow = (ROOT / '.github/workflows/build_test_deploy.yml').read_text()
-    job = re.search(r'(?ms)^  tag-release:\n(.*?)(?=^  [\w-]+:\n|\Z)', workflow).group(1)
+    job = re.search(r'(?ms)^  deploy:\n(.*?)(?=^  [\w-]+:\n|\Z)', workflow).group(1)
     lines = job.splitlines()
     for index, line in enumerate(lines):
         if line.startswith('    if: '):
@@ -28,18 +28,17 @@ def release_condition():
                     parts.append(continuation.strip())
                 value = ' '.join(parts)
             return value
-    raise AssertionError('tag-release must declare its condition')
+    raise AssertionError('deploy must declare its condition')
 
 
-def eligible(expression, release, deploy, workflow_cancelled, ancestor_skipped):
-    if expression.startswith('${{') and expression.endswith('}}'):
-        expression = expression[3:-2].strip()
+def eligible(expression, event, ref, build, arm, tests, cancelled):
     expression = re.sub(r'!(?!=)', ' not ', expression.replace('&&', ' and ').replace('||', ' or '))
+    expression = expression.replace('needs.build-arm.result', 'needs.build_arm.result')
     tree = ast.parse(expression.strip(), mode='eval')
-    values = {'inputs.release': release, 'needs.deploy.result': deploy}
-    status = {'cancelled': workflow_cancelled, 'always': True,
-              'success': deploy == 'success' and not ancestor_skipped and not workflow_cancelled,
-              'failure': deploy == 'failure'}
+    values = {'github.event_name': event, 'github.ref': ref, 'needs.targets.result': 'success',
+              'needs.build.result': build, 'needs.build_arm.result': arm, 'needs.tests.result': tests}
+    status = {'cancelled': cancelled, 'always': True, 'success': not cancelled
+              and all(result == 'success' for result in (build, arm, tests))}
 
     def name(node):
         if isinstance(node, ast.Name):
@@ -71,20 +70,15 @@ def eligible(expression, release, deploy, workflow_cancelled, ancestor_skipped):
 class ReleaseConditionTest(unittest.TestCase):
     def test_checked_in_guard_for_all_publication_outcomes(self):
         condition = release_condition()
-        # Only successful, requested publication in a non-cancelled run may release.
-        # Optional ancestors may either have succeeded or have been skipped.
-        allowed = {('true', 'success', False, False), ('true', 'success', False, True)}
-        contexts = itertools.product(('true', 'false'), ('success', 'failure', 'cancelled', 'skipped'),
-                                     (False, True), (False, True))
-        for context in contexts:
-            with self.subTest(release=context[0], deploy=context[1], cancelled=context[2], ancestor_skipped=context[3]):
-                self.assertEqual(eligible(condition, *context), context in allowed)
-
-    def test_legacy_guard_reproduces_skipped_ancestor_regression(self):
-        legacy = "inputs.release == 'true'"
-        self.assertTrue(eligible(legacy, 'true', 'success', False, False))
-        self.assertFalse(eligible(legacy, 'true', 'success', False, True))
-        self.assertTrue(eligible(release_condition(), 'true', 'success', False, True))
+        outcomes = ('success', 'failure', 'cancelled', 'skipped')
+        for context in itertools.product(('push', 'workflow_dispatch', 'pull_request'),
+                                         ('refs/heads/2024.06', 'refs/heads/feature/example'),
+                                         outcomes, outcomes, outcomes, (False, True)):
+            event, ref, build, arm, tests, cancelled = context
+            allowed = (event == 'push' and ref == 'refs/heads/2024.06' and build == arm == 'success'
+                       and tests in ('success', 'skipped') and not cancelled)
+            with self.subTest(context=context):
+                self.assertEqual(eligible(condition, *context), allowed)
 
 
 if __name__ == '__main__':

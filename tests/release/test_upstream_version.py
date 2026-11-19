@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "upstream_version", Path(__file__).resolve().parents[2] / "scripts/release/upstream_version.py"
@@ -61,41 +60,6 @@ class UpstreamVersionTest(unittest.TestCase):
         self.git("update-ref", "refs/mailu-upstream/branch", self.nine)
         self.git("merge", "--no-ff", "-qm", "import upstream", "upstream")
         self.assertEqual(resolver.select_version("2024.06", ["2024.06.9", "2024.06.67"]), "2024.06.9")
-
-    def test_first_publication_creates_pin_and_release(self):
-        self.assertEqual(resolver.publication_state("2024.06.67", [], None, "fork"), (True, True))
-
-    def test_existing_release_preserves_fixed_image_and_tag(self):
-        self.assertEqual(resolver.publication_state("2024.06.67", ["2024.06.67"], "old-fork", "new-fork"), (False, False))
-
-    def test_imported_tag_collision_is_not_overwritten(self):
-        with self.assertRaisesRegex(RuntimeError, "will not overwrite"):
-            resolver.publication_state("2024.06.67", [], "upstream", "fork")
-
-    def test_partial_release_can_resume_without_retagging_image(self):
-        self.assertEqual(resolver.publication_state("2024.06.67", [], "fork", "fork"), (False, True))
-
-    def test_dispatch_only_image_is_preserved_without_creating_a_release(self):
-        self.assertEqual(resolver.publication_state(
-            "2024.06.46", [], None, "new-fork", image_present=True
-        ), (False, False))
-
-    def test_image_and_matching_tag_allow_an_interrupted_release_to_resume(self):
-        self.assertEqual(resolver.publication_state(
-            "2024.06.67", [], "fork", "fork", image_present=True
-        ), (False, True))
-
-    @patch.object(resolver.subprocess, "run")
-    def test_missing_manifest_allows_a_new_fixed_version(self, mock_run):
-        mock_run.return_value = subprocess.CompletedProcess([], 1, stderr="ERROR: ghcr.io/fork/mailu-admin:2024.06.67: not found")
-        self.assertFalse(resolver.image_exists("ghcr.io/fork/mailu-admin:2024.06.67"))
-
-    @patch.object(resolver.subprocess, "run")
-    def test_registry_access_error_does_not_allow_overwriting_an_image(self, mock_run):
-        mock_run.return_value = subprocess.CompletedProcess([], 1, stderr="ERROR: unauthorized")
-        with self.assertRaisesRegex(RuntimeError, "Cannot check existing image"):
-            resolver.image_exists("ghcr.io/fork/mailu-admin:2024.06.46")
-
 
 if __name__ == "__main__":
     unittest.main()
