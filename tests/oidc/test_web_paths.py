@@ -22,7 +22,8 @@ class WebPathTest(unittest.TestCase):
         return config
 
     def test_invalid_base_paths(self):
-        for value in ('/', '/mailu/', 'mailu', '/a//b', '/a/..', '/x;return', '/internal/ui', '/webdav'):
+        for value in ('/', '/mailu/', 'mailu', '/a//b', '/a/..', '/x;return', '/internal/ui',
+                      '/webdav', '/mobileconfigs', '/Autodiscover/AutodiscoverXjson'):
             with self.subTest(value=value), patch.dict(os.environ, WEB_BASE_PATH=value):
                 with self.assertRaisesRegex(ValueError, 'WEB_BASE_PATH'):
                     web.base_path()

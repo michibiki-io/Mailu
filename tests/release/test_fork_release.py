@@ -57,6 +57,22 @@ class ForkReleaseTest(unittest.TestCase):
             self.plan([(tag, IMAGES[:1], HEAD)], {tag: HEAD})
 
     @patch.object(release, 'run')
+    def test_unknown_provenance_stops_publication(self, run):
+        tag = f'{BASE}-r1'
+        names = {image: set() for image in IMAGES}
+        names[IMAGES[0]].add(tag)
+        run.return_value = ('{"manifests": [{"platform": {"os": "linux", "architecture": "amd64"}},'
+                            ' {"platform": {"os": "linux", "architecture": "arm64"}}]}')
+        with self.assertRaisesRegex(RuntimeError, 'Cannot verify revision and platforms'):
+            release.choose_revision(BASE, HEAD, names, {}, {})
+
+    @patch.object(release, 'is_ancestor', return_value=False)
+    def test_unrelated_image_owner_stops_publication(self, ancestor):
+        tag = f'{BASE}-r1'
+        with self.assertRaisesRegex(RuntimeError, 'is not an ancestor'):
+            self.plan([(tag, IMAGES[:1], PREVIOUS)])
+
+    @patch.object(release, 'run')
     def test_superseded_run_returns_before_listing_or_writing(self, run):
         run.return_value = f'{PREVIOUS}\trefs/heads/2024.06'
         env = dict(GITHUB_EVENT_NAME='push', GITHUB_REF='refs/heads/2024.06', GITHUB_REPOSITORY='fork/Mailu',

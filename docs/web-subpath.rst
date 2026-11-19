@@ -1,5 +1,5 @@
 Publishing the Web UI under a subpath
-====================================
+=====================================
 
 Set ``WEB_BASE_PATH=/mailu`` on the front, admin, and enabled webmail
 containers. Use the same value in all three. An unset or empty value keeps

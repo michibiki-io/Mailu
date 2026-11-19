@@ -5,12 +5,17 @@ import re
 
 
 _PATH = re.compile(r"(?:/[A-Za-z0-9_-]+)+")
-_ROOT_ENDPOINTS = {"health", "internal", "mobileconfig", "webdav"}
+_ROOT_ENDPOINTS = {"autodiscover", "health", "internal", "webdav"}
 
 
 def base_path():
     path = os.environ.get("WEB_BASE_PATH", "")
-    if path and (not _PATH.fullmatch(path) or path.split("/")[1].lower() in _ROOT_ENDPOINTS):
+    if not path:
+        return path
+    first_segment = path.split("/", 2)[1].lower() if path.startswith("/") else ""
+    # The existing Apple autoconfiguration regex also matches longer names.
+    if (not _PATH.fullmatch(path) or first_segment in _ROOT_ENDPOINTS
+            or first_segment.startswith("mobileconfig")):
         raise ValueError("WEB_BASE_PATH must be an absolute URL path with no trailing slash "
                          "or reserved first segment")
     return path
