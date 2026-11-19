@@ -176,6 +176,53 @@ class OidcTests(unittest.TestCase):
         for path in ['/tests/dependencies/requirements-prod.txt', '/tests/dependencies/requirements-dev.txt', '/tests/oidc/requirements.txt']:
             self.assertIn('oic==1.7.0', Path(path).read_text().splitlines())
 
+    def test_subpath_routes_local_and_oidc_login(self):
+        self.config.overrides.update(WEB_ADMIN='/settings', WEB_WEBMAIL='/inbox',
+                                     WEB_API='/rest', API_TOKEN='subpath-test-token')
+        with patch.dict(os.environ, WEB_BASE_PATH='/apps/mailu'):
+            app = create_app_from_config(self.config)
+        base = '/apps/mailu'
+        client = app.test_client()
+        public = 'https://mail.example.org'
+        login = base + '/sso/login'
+        destination = public + base + '/settings/client'
+        return_query = urlencode({'url': destination})
+        page = client.get(login + '?' + return_query, base_url=public)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(f'data-static="{base}/static/"'.encode(), page.data)
+        self.assertIn(f'{base}/static/mailu.png'.encode(), page.data)
+        self.assertEqual(client.get(base + '/static/mailu.png').status_code, 200)
+        self.assertEqual(client.get('/static/mailu.png').status_code, 404)
+        self.assertEqual(client.get('/sso/login').status_code, 404)
+        self.assertEqual(client.get(base + '/rest/v1/swagger.json').status_code, 200)
+        discovery = client.get('/internal/autoconfig/mozilla')
+        self.assertIn(f'{base}/settings/client'.encode(), discovery.data)
+
+        local = client.post(login + '?' + return_query, base_url=public,
+                            data={'email': EMAIL, 'pw': 'local-password', 'submitAdmin': 'Sign in'})
+        self.assertEqual(local.location, destination)
+        session_name = app.config['SESSION_COOKIE_NAME']
+        session = client.get_cookie(session_name, domain='mail.example.org', path=base)
+        self.assertIsNotNone(session)
+        # nginx's auth subrequest forwards the cookie on the original Webmail request.
+        auth = app.test_client(use_cookies=False)
+        self.assertEqual(auth.get('/internal/auth/user', base_url=public,
+                                  headers={'Cookie': f'{session_name}={session.value}'}).status_code, 200)
+        logout = client.get(base + '/sso/logout', base_url=public)
+        self.assertEqual(logout.location, login)
+        self.assertIsNone(client.get_cookie(session_name, domain='mail.example.org', path=base))
+
+        start = client.get(base + '/sso/oidc/start?' + return_query, base_url=public)
+        args = parse_qs(urlsplit(start.location).query)
+        self.idp.nonce = args['nonce'][0]
+        callback_path = base + '/sso/login/oidc'
+        self.assertEqual(args['redirect_uri'], [public + callback_path])
+        callback = client.get(callback_path, base_url=public,
+                              query_string={'code': 'valid-code', 'state': args['state'][0]})
+        self.assertEqual(callback.location, destination)
+        token = next(kwargs for path, kwargs in self.idp.calls if path == '/token')
+        self.assertEqual(parse_qs(token['data'])['redirect_uri'], [public + callback_path])
+
     def test_local_first_and_session_cannot_authenticate_password(self):
         self.login(); self.idp.calls.clear()
         with self.app.test_request_context():

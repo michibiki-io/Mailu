@@ -31,11 +31,6 @@ on:
         description: 'The docker organisation where the images are pushed to. E.g. ghcr.io/mailu'
         required: true
         type: string
-      publish_pinned:
-        description: 'Publish the fixed version tag (false preserves an existing release image).'
-        default: 'true'
-        required: false
-        type: string
       upstream_admin_image:
         description: 'Upstream admin image for UI assets; empty uses pinned_mailu_version.'
         default: ''
@@ -47,16 +42,6 @@ on:
         type: string
       test:
         description: 'Run the integration tests (requires the complete upstream image set).'
-        default: 'false'
-        required: false
-        type: string
-      deploy:
-        description: Deploy to container registry. Happens for all branches but staging. Use string true or false.
-        default: 'true'
-        required: false
-        type: string
-      release:
-        description: Tag and create the github release. Use string true or false.
         default: 'false'
         required: false
         type: string
@@ -81,11 +66,6 @@ on:
         required: true
         default: 'ghcr.io/michibiki-io'
         type: string
-      publish_pinned:
-        description: 'Publish the fixed version tag (false preserves an existing release image).'
-        default: 'true'
-        required: false
-        type: string
       upstream_admin_image:
         description: 'Upstream admin image for UI assets; empty uses pinned_mailu_version.'
         default: ''
@@ -97,16 +77,6 @@ on:
         type: string
       test:
         description: 'Do test or not.'
-        default: 'false'
-        required: false
-        type: string
-      deploy:
-        description: Deploy to container registry. Happens for all branches but staging. Use string true or false.
-        default: 'true'
-        required: false
-        type: string
-      release:
-        description: Tag and create the github release. Use string true or false.
         default: 'false'
         required: false
         type: string
@@ -131,14 +101,23 @@ jobs:
     runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
-      images: ${{ steps.targets.outputs.images }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Validate architectures
         env:
           ARCHITECTURES: ${{ inputs.architecture }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_VERSION: ${{ inputs.mailu_version }}
+          INPUT_BASE_VERSION: ${{ inputs.pinned_mailu_version }}
+          INPUT_REGISTRY: ${{ inputs.docker_org }}
         run: |
+          for value in "$INPUT_BRANCH" "$INPUT_VERSION" "$INPUT_BASE_VERSION" "$INPUT_REGISTRY"; do
+            if [[ ! "$value" =~ ^[A-Za-z0-9_.:/-]+$ ]]; then
+              echo "Invalid build parameter" >&2
+              exit 1
+            fi
+          done
           IFS=, read -ra platforms <<< "$ARCHITECTURES"
           test "${#platforms[@]}" -gt 0
           for platform in "${platforms[@]}"; do
@@ -152,7 +131,6 @@ jobs:
         run: |
           plan=$(docker buildx bake -f "$HCL_FILE" --print)
           echo "matrix=$(jq -cr '.group.default.targets' <<< "$plan")" >> "$GITHUB_OUTPUT"
-          echo "images=$(jq -cr '[.target[].tags[0] | split("/")[-1] | split(":")[0]]' <<< "$plan")" >> "$GITHUB_OUTPUT"
       - name: Show matrix
         run: |
           echo ${{ steps.targets.outputs.matrix }}
@@ -535,91 +513,34 @@ jobs:
           PINNED_MAILU_VERSION: ${{ env.PINNED_MAILU_VERSION }}-build-${{ github.run_id }}
 
   deploy:
-    name: Deploy images
-    # Publish only after every requested architecture has completed successfully.
+    name: Publish fork release
     if: >-
-      always() && !cancelled() && inputs.deploy == 'true' &&
-      needs.targets.result == 'success' &&
-      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (!contains(inputs.architecture, 'linux/amd64') || needs.build.result == 'success') &&
-      (!contains(inputs.architecture, 'linux/arm64') || needs.build-arm.result == 'success')
+      always() && !cancelled() && github.event_name == 'push' &&
+      github.ref == 'refs/heads/2024.06' &&
+      needs.targets.result == 'success' && needs.build.result == 'success' &&
+      needs.build-arm.result == 'success' &&
+      (needs.tests.result == 'success' || needs.tests.result == 'skipped')
     runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     needs:
       - targets
       - build
       - build-arm
       - tests
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJson(needs.targets.outputs.images) }}
+    permissions:
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v7
-      - name: Retrieve global variables
-        shell: bash
-        run: |
-          echo "BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
-          echo "MAILU_VERSION=${{ inputs.mailu_version }}" >> $GITHUB_ENV
-          echo "PINNED_MAILU_VERSION=${{ inputs.pinned_mailu_version }}" >> $GITHUB_ENV
-          echo "DOCKER_ORG=${{ inputs.docker_org }}" >> $GITHUB_ENV
-      - name: Set up Docker Context for Buildx
-        id: buildx-context
-        run: |
-          docker context inspect builders >/dev/null 2>&1 || docker context create builders
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
         with:
-          endpoint: builders
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Helper to convert docker org to lowercase
-        id: string
-        shell: bash
-        run: echo "lowercase=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - name: Publish requested platforms
-        env:
-          ARCHITECTURES: ${{ inputs.architecture }}
-          DESTINATION: ${{ inputs.docker_org }}/${{ matrix.target }}
-          SOURCE: ghcr.io/${{ steps.string.outputs.lowercase }}/${{ matrix.target }}
-          VERSION: ${{ inputs.mailu_version }}
-          PINNED_VERSION: ${{ inputs.pinned_mailu_version }}
-          PUBLISH_PINNED: ${{ inputs.publish_pinned }}
-        run: bash scripts/release/publish-images.sh
-
-#This job creates a tagged release. A tag is created for the pinned version x.y.z. The GH release refers to this tag.
-  tag-release:
-    permissions:
-      contents: write
-    if: ${{ !cancelled() && inputs.release == 'true' && needs.deploy.result == 'success' }}
-    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
-    needs:
-      - deploy
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # fetch-depth 0 is required to also retrieve all tags.
-          fetch-depth: 0
-      - name: Create fork tag and release matching upstream
+          password: ${{ github.token }}
+      - name: Publish fixed images, release and admin aliases
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.pinned_mailu_version }}
-        run: |
-          # An imported upstream tag must never masquerade as an OIDC fork release.
-          remote_tag=$(git ls-remote --tags origin "refs/tags/$VERSION" "refs/tags/$VERSION^{}")
-          if [ -n "$remote_tag" ]; then
-            git fetch --no-tags origin "refs/tags/$VERSION"
-            test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$GITHUB_SHA" || {
-              echo "Tag $VERSION already points to a different commit; refusing to move it" >&2
-              exit 1
-            }
-          else
-            git push origin "$GITHUB_SHA:refs/tags/$VERSION"
-          fi
-          printf 'OIDC fork of [Mailu %s](https://github.com/Mailu/Mailu/releases/tag/%s).\n\nFork commit: `%s`\n\nOnly the admin image is replaced; use upstream %s images for other services.\n' \
-            "$VERSION" "$VERSION" "$GITHUB_SHA" "$VERSION" > release_note.md
-          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "$VERSION" --notes-file release_note.md
+          UPSTREAM_VERSION: ${{ inputs.pinned_mailu_version }}
+        run: python3 scripts/release/fork_release.py

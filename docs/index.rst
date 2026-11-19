@@ -59,6 +59,7 @@ the version of Mailu that you are running.
     kubernetes/mailu/index
     configuration
     oidc
+    web-subpath
     dns
     reverse
     database

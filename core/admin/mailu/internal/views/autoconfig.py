@@ -35,7 +35,7 @@ def autoconfig_mozilla():
 <useGlobalPreferredServer>false</useGlobalPreferredServer>
 </outgoingServer>
 
-<documentation url="https://{hostname}/admin/client">
+<documentation url={quoteattr(f"https://{hostname}{flask.url_for('ui.client')}")}>
 <descr lang="en">Configure your email client</descr>
 </documentation>
 </emailProvider>

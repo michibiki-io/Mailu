@@ -6,8 +6,9 @@ import sys
 import subprocess
 import shutil
 import hmac
+from pathlib import Path
 
-from socrate import conf, system
+from socrate import conf, system, web
 
 env = os.environ
 
@@ -17,6 +18,7 @@ coerced = system.set_env(['ROUNDCUBE','SNUFFLEUPAGUS'])
 context = {}
 context.update(env)
 context['ADMIN'] = coerced.get('ADMIN', False)
+web.mount_paths(context, web.base_path())
 
 context["MAX_FILESIZE"] = str(int(int(env.get("MESSAGE_SIZE_LIMIT", "50000000")) * 0.66 / 1048576))
 
@@ -67,6 +69,8 @@ context["INCLUDES"] = sorted(inc for inc in os.listdir("/overrides") if inc.ends
 
 # create config files
 conf.jinja("/conf/config.inc.php", context, "/var/www/roundcube/config/config.inc.php")
+for stylesheet in Path('/var/www/roundcube/plugins/mailu/skins').glob('*/mailu.css.j2'):
+    conf.jinja(str(stylesheet), context, str(stylesheet.with_suffix('')))
 
 # create dirs
 os.system("mkdir -p /data/gpg")

@@ -18,6 +18,9 @@ Configuration
 * ``OIDC_REDIRECT_HOST`` (default ``mail.mailu.io``): public Mailu hostname,
   optionally including a port, without scheme or path. Register the exact HTTPS
   callback ``https://<OIDC_REDIRECT_HOST>/sso/login/oidc`` at the provider.
+  For ``WEB_BASE_PATH=/mailu``, register
+  ``https://<OIDC_REDIRECT_HOST>/mailu/sso/login/oidc`` and restore the root
+  callback if you roll back.
 * ``OIDC_AUTH_CREATE`` (boolean, default ``false``): allow normal browser OIDC
   login to create ordinary users in existing Mailu domains. This is independent
   of header authentication's ``PROXY_AUTH_CREATE``.
@@ -172,6 +175,9 @@ by this focused SQLite suite. Run without publishing images::
 既定の ``https://localhost/info`` は仮の値なので、実際の issuer を指定する。
 ``OIDC_REDIRECT_HOST`` は公開ホスト名と任意のポート番号とし、scheme や path は付けない。
 IdP に ``https://<OIDC_REDIRECT_HOST>/sso/login/oidc`` を正確に登録する。
+``WEB_BASE_PATH=/mailu`` を使う場合は
+``https://<OIDC_REDIRECT_HOST>/mailu/sso/login/oidc`` を登録し、
+ルート配備へ戻すときは元のコールバックを登録する。
 ボタン名は ``OIDC_BUTTON_NAME`` で指定する。
 
 IdP には認可コードフロー、署名された ID Token、UserInfo と introspection が必要。
