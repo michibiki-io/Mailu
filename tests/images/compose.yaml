@@ -33,7 +33,20 @@ services:
     env_file: mailu.env
     entrypoint: [python3, /test/idp.py]
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - --max-time
+        - '2'
+        - --cacert
+        - /fixture-tls/cert.pem
+        - --resolve
+        - idp:8443:127.0.0.1
+        - https://idp:8443/.well-known/openid-configuration
+      interval: 2s
+      timeout: 3s
+      retries: 15
     volumes:
       - .:/test:ro
       - ../oidc:/oidc:ro
@@ -42,14 +55,35 @@ services:
     image: mailu-test/mailu-nginx:local
     entrypoint: [python3, /test/smtp.py]
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import socket
+          with socket.create_connection(('127.0.0.1', 25), timeout=2):
+              pass
+      interval: 2s
+      timeout: 3s
+      retries: 15
     volumes:
       - .:/test:ro
   imap:
     image: mailu-test/mailu-nginx:local
     entrypoint: [/bin/sh, -ec]
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import socket
+          for port in (143, 2525):
+              with socket.create_connection(('127.0.0.1', port), timeout=1):
+                  pass
+      interval: 2s
+      timeout: 3s
+      retries: 15
     command: ['mkdir -p /mail && chown mailu:mailu /mail && exec dovecot -F -c /test/imap.conf']
     volumes:
       - .:/test:ro

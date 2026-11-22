@@ -95,7 +95,7 @@ check_webmail() {
     test "$(exec_in webmail curl -fsS http://127.0.0.1/ping)" = pong
     "${compose[@]}" cp tests/images/webmail.php "webmail:$document_root/mailu-ci.php"
     exec_in webmail chmod 444 "$document_root/mailu-ci.php"
-    exec_in webmail php "$document_root/mailu-ci.php" | grep '^cli PHP 8\.4\.'
+    exec_in --user mailu webmail php "$document_root/mailu-ci.php" | grep '^cli PHP 8\.4\.'
     exec_in webmail curl -fsS -H 'Host: mail.example.org' http://127.0.0.1/mailu-ci.php | grep '^fpm-fcgi PHP 8\.4\.'
     exec_in webmail rm "$document_root/mailu-ci.php"
 }

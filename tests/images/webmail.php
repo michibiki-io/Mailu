@@ -38,7 +38,8 @@ foreach (['en_US', 'en_GB', 'de', 'fr', 'ru', 'uk'] as $locale) {
 }
 
 if (str_contains(__DIR__, '/roundcube/')) {
-    require '/var/www/roundcube/program/include/iniset.php';
+    define('INSTALL_PATH', dirname(__DIR__) . '/');
+    require INSTALL_PATH . 'program/include/iniset.php';
     verify(version_compare(RCMAIL_VERSION, '1.6.21', '>='), RCMAIL_VERSION);
     $spellcheck = new rcube_spellchecker('en');
     verify($spellcheck->check('hello') && !$spellcheck->check('heloo'), 'Roundcube spellcheck failed');
