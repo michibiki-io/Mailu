@@ -17,6 +17,9 @@ ARG VERSION
 LABEL version=$VERSION
 
 # Dovecot 2.3 requires ICU 74 from the same tagged repository.
+# Alpine 3.21 regular support ended on 2026-11-01. Dovecot 2.3 and ICU 74
+# retain known security risks until the front proxy can move off these packages.
+# Upstream discussion: https://github.com/Mailu/Mailu/pull/4214#issuecomment-7039588736
 RUN set -euxo pipefail \
   ; printf '%s\n' '@legacy-dovecot https://dl-cdn.alpinelinux.org/alpine/v3.21/main' >> /etc/apk/repositories \
   ; apk add --no-cache certbot openssl py3-cryptography py3-requests py3-watchdog \

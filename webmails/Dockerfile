@@ -3,10 +3,12 @@
 FROM base AS snuffleupagus
 
 ARG SNUFFLEUPAGUS_VERSION=0.14.0
+ARG SNUFFLEUPAGUS_SHA256=080cf7e24d15a8650e271837030fca546e627c7a4c7317710c683282fdcb71c6
 
 RUN set -euxo pipefail \
   ; apk add --no-cache autoconf build-base pcre2-dev re2c 'php84-dev>=8.4.28-r0' \
   ; curl -fsSL "https://codeload.github.com/jvoisin/snuffleupagus/tar.gz/refs/tags/v${SNUFFLEUPAGUS_VERSION}" -o /tmp/snuffleupagus.tgz \
+  ; printf '%s  %s\n' "${SNUFFLEUPAGUS_SHA256}" /tmp/snuffleupagus.tgz | sha256sum -c - \
   ; tar -xzf /tmp/snuffleupagus.tgz -C /tmp \
   ; cd "/tmp/snuffleupagus-${SNUFFLEUPAGUS_VERSION}/src" \
   ; phpize84 \
