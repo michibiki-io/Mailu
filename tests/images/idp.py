@@ -24,9 +24,11 @@ class Handler(BaseHTTPRequestHandler):
             query = urlencode({"code": "valid-code", "state": args["state"][0]})
             self.send_response(302)
             self.send_header("Location", callback + "?" + query)
+            self.send_header("Content-Length", "0")
             self.end_headers()
         elif path.path == "/checked":
             self.send_response(200 if any(path == "/introspect" for path, _ in idp.calls) else 409)
+            self.send_header("Content-Length", "0")
             self.end_headers()
         else:
             self.respond()
@@ -44,6 +46,7 @@ class Handler(BaseHTTPRequestHandler):
         response = idp.request(self.command, issuer + self.path, **kwargs)
         self.send_response(response.status_code)
         self.send_header("Content-Type", response.headers["Content-Type"])
+        self.send_header("Content-Length", str(len(response.content)))
         self.end_headers()
         self.wfile.write(response.content)
 

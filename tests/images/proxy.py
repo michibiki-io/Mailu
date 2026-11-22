@@ -85,5 +85,6 @@ def web():
     print(f"OIDC callback, Cookie Path, introspection, Roundcube SSO and logout passed at {PREFIX or '/'}")
 
 
-mail()
-web()
+if __name__ == "__main__":
+    mail()
+    web()

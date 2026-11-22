@@ -8,11 +8,6 @@ function verify(bool $condition, string $message): void
     }
 }
 
-function string_argument(string $value): string
-{
-    return $value;
-}
-
 verify(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 4, PHP_VERSION);
 verify(php_ini_loaded_file() === '/etc/php84/php.ini', 'Unexpected php.ini');
 foreach (['apcu', 'ctype', 'curl', 'dom', 'enchant', 'exif', 'fileinfo', 'gd', 'iconv',
@@ -22,13 +17,11 @@ foreach (['apcu', 'ctype', 'curl', 'dom', 'enchant', 'exif', 'fileinfo', 'gd', '
     verify(extension_loaded($module), "Missing PHP extension: $module");
 }
 verify(ini_get('sp.configuration_file') === '/etc/snuffleupagus.rules', 'Missing rules path');
-$strict = false;
-try {
-    string_argument(42);
-} catch (TypeError $error) {
-    $strict = true;
-}
-verify($strict, 'Snuffleupagus global strict rule is not active');
+ob_start();
+phpinfo(INFO_MODULES);
+$modules = strip_tags(ob_get_clean());
+verify(preg_match('/snuffleupagus support\s*(?:=>\s*)?enabled/i', $modules) === 1,
+    'Snuffleupagus did not activate the configuration');
 
 $broker = enchant_broker_init();
 foreach (['en_US', 'en_GB', 'de', 'fr', 'ru', 'uk'] as $locale) {
