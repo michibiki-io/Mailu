@@ -118,6 +118,9 @@ WEBMAIL=snappymail
 "${compose[@]}" up -d --wait --wait-timeout 120 webmail
 check_webmail /var/www/snappymail
 exec_in webmail test -d /var/www/snappymail/snappymail/v/3.0.0
-page=$(exec_in webmail curl -fsS -H 'Host: mail.example.org' http://127.0.0.1/)
-grep -qi snappymail <<< "$page"
-echo "SnappyMail 3.0.0 returned its page through NGINX and FPM"
+headers=$(exec_in webmail curl -fsS -D - -o /dev/null \
+    -H 'Host: mail.example.org' http://127.0.0.1/ | tr -d '\r')
+grep -q '^HTTP/1\.1 302 ' <<< "$headers"
+grep -qi '^Server: SnappyMail$' <<< "$headers"
+grep -qi '^Location: /webmail/sso\.php$' <<< "$headers"
+echo "SnappyMail 3.0.0 redirected to SSO through NGINX and FPM"
