@@ -1,0 +1,95 @@
+services:
+  redis:
+    image: redis:alpine
+  admin:
+    image: mailu-test/mailu-admin:local
+    env_file: mailu.env
+    environment:
+      REQUESTS_CA_BUNDLE: /fixture-tls/cert.pem
+    entrypoint: [python3, /test/admin.py]
+    volumes:
+      - .:/test:ro
+      - ${SMOKE_TLS_DIR:?}:/fixture-tls:ro
+    depends_on:
+      - redis
+      - idp
+  front:
+    image: mailu-test/mailu-nginx:local
+    env_file: mailu.env
+    volumes:
+      - .:/test:ro
+      - ${SMOKE_TLS_DIR:?}:/certs:ro
+    networks:
+      default:
+        aliases:
+          - mail.example.org
+  webmail:
+    image: mailu-test/mailu-webmail:local
+    env_file: mailu.env
+    depends_on:
+      - front
+  idp:
+    image: mailu-test/mailu-admin:local
+    env_file: mailu.env
+    entrypoint: [python3, /test/idp.py]
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - --max-time
+        - '2'
+        - --cacert
+        - /fixture-tls/cert.pem
+        - --resolve
+        - idp:8443:127.0.0.1
+        - https://idp:8443/.well-known/openid-configuration
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - .:/test:ro
+      - ../oidc:/oidc:ro
+      - ${SMOKE_TLS_DIR:?}:/fixture-tls:ro
+  smtp:
+    image: mailu-test/mailu-nginx:local
+    entrypoint: [python3, /test/smtp.py]
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import smtplib
+          with smtplib.SMTP('127.0.0.1', 25, timeout=2):
+              pass
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - .:/test:ro
+  imap:
+    image: mailu-test/mailu-nginx:local
+    entrypoint: [/bin/sh, -ec]
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import imaplib
+          import smtplib
+          with imaplib.IMAP4('127.0.0.1', 143, timeout=1):
+              pass
+          with smtplib.LMTP('127.0.0.1', 2525, timeout=1):
+              pass
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    command: ['mkdir -p /mail && chown mailu:mailu /mail && exec dovecot -F -c /test/imap.conf']
+    volumes:
+      - .:/test:ro
+
+networks:
+  default:
+    internal: true

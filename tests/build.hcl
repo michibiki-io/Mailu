@@ -149,11 +149,20 @@ target "antispam" {
   tags = tag("rspamd")
 }
 
+target "front-base" {
+  inherits = ["defaults"]
+  context = "core/base/"
+  target = "web-runtime"
+  args = {
+    DISTRO = "ghcr.io/mailu/alpine:3.22.8"
+  }
+}
+
 target "front" {
   inherits = ["defaults"]
   context = "core/nginx/"
   contexts = {
-    base = "target:base"
+    base = "target:front-base"
   }
   tags = tag("nginx")
 }
@@ -188,11 +197,20 @@ target "smtp" {
 # -----------------------------------------------------------------------------------------
 # Webmail image
 # -----------------------------------------------------------------------------------------
+target "webmail-base" {
+  inherits = ["defaults"]
+  context = "core/base/"
+  target = "web-runtime"
+  args = {
+    DISTRO = "ghcr.io/mailu/alpine:3.24.3"
+  }
+}
+
 target "webmail" {
   inherits = ["defaults"]
   context = "webmails/"
   contexts = {
-    base = "target:base"
+    base = "target:webmail-base"
   }
   tags = tag("webmail")
 }

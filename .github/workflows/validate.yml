@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Test release selection and non-publishing image plans
@@ -37,26 +40,60 @@ jobs:
           tar -xzf "$tool_dir/$archive" -C "$tool_dir" actionlint
           "$tool_dir/actionlint" -shellcheck='' .github/workflows/*.yml
 
-  arm-build-smoke:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
+  image-regression:
+    name: Image regression (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            machine: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            machine: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      ARCH: linux/${{ matrix.arch }}
+      DOCKER_ORG: mailu-test
     steps:
       - uses: actions/checkout@v7
-      - name: Verify native ARM64 runner
-        run: test "$(uname -m)" = aarch64
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify native runner and exact commit
+        env:
+          EXPECTED_MACHINE: ${{ matrix.machine }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(uname -m)" = "$EXPECTED_MACHINE"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Select admin assets from the matching upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release/upstream_version.py --branch 2024.06
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-      - name: Build native arm64 smoke image
+      - name: Build release targets into the local Docker engine
+        env:
+          UPSTREAM_ADMIN_IMAGE: ${{ steps.upstream.outputs.upstream_admin_image }}
         run: |
-          docker buildx build --platform linux/arm64 \
-            --output type=cacheonly --progress plain \
-            --file tests/release/arm-smoke.Dockerfile tests/release
+          docker buildx bake -f tests/build-ci.hcl --load --progress plain \
+            --set admin.contexts.base=target:base
+      - name: Test rendered configuration, webmail, OIDC and mail proxy
+        run: bash tests/images/smoke.sh
 
   oidc-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Build isolated OIDC test environment
         run: docker build -t mailu-oidc-tests -f tests/oidc/Dockerfile .
       - name: Test real Mailu routes and pinned OIDC library
