@@ -16,9 +16,14 @@ FROM base
 ARG VERSION
 LABEL version=$VERSION
 
+# Dovecot 2.3 requires ICU 74 from the same tagged repository.
 RUN set -euxo pipefail \
-  ; apk add --no-cache certbot nginx nginx-mod-http-brotli nginx-mod-mail openssl \
-  ; apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main dovecot-lua dovecot-pigeonhole-plugin 'dovecot-lmtpd<2.4' dovecot-pop3d dovecot-submissiond
+  ; printf '%s\n' '@legacy-dovecot https://dl-cdn.alpinelinux.org/alpine/v3.21/main' >> /etc/apk/repositories \
+  ; apk add --no-cache certbot openssl py3-cryptography py3-requests py3-watchdog \
+    'nginx>=1.28.3-r8' 'nginx-mod-http-brotli>=1.28.3-r8' 'nginx-mod-mail>=1.28.3-r8' \
+    'dovecot@legacy-dovecot<2.4' 'dovecot-lmtpd@legacy-dovecot<2.4' \
+    'dovecot-lua@legacy-dovecot<2.4' 'dovecot-pigeonhole-plugin@legacy-dovecot<2.4' \
+    'dovecot-pop3d@legacy-dovecot<2.4' 'dovecot-submissiond@legacy-dovecot<2.4'
 
 COPY conf/ /conf/
 COPY --from=static /static/ /static/

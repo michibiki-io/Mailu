@@ -1,0 +1,59 @@
+services:
+  redis:
+    image: redis:alpine
+  admin:
+    image: mailu-test/mailu-admin:local
+    env_file: mailu.env
+    environment:
+      REQUESTS_CA_BUNDLE: /fixture-tls/cert.pem
+    entrypoint: [python3, /test/admin.py]
+    volumes:
+      - .:/test:ro
+      - ${SMOKE_TLS_DIR:?}:/fixture-tls:ro
+    depends_on:
+      - redis
+      - idp
+  front:
+    image: mailu-test/mailu-nginx:local
+    env_file: mailu.env
+    volumes:
+      - .:/test:ro
+      - ${SMOKE_TLS_DIR:?}:/certs:ro
+    networks:
+      default:
+        aliases:
+          - mail.example.org
+  webmail:
+    image: mailu-test/mailu-webmail:local
+    env_file: mailu.env
+    depends_on:
+      - front
+  idp:
+    image: mailu-test/mailu-admin:local
+    env_file: mailu.env
+    entrypoint: [python3, /test/idp.py]
+    healthcheck:
+      disable: true
+    volumes:
+      - .:/test:ro
+      - ../oidc:/oidc:ro
+      - ${SMOKE_TLS_DIR:?}:/fixture-tls:ro
+  smtp:
+    image: mailu-test/mailu-nginx:local
+    entrypoint: [python3, /test/smtp.py]
+    healthcheck:
+      disable: true
+    volumes:
+      - .:/test:ro
+  imap:
+    image: mailu-test/mailu-nginx:local
+    entrypoint: [/bin/sh, -ec]
+    healthcheck:
+      disable: true
+    command: ['mkdir -p /mail && chown mailu:mailu /mail && exec dovecot -F -c /test/imap.conf']
+    volumes:
+      - .:/test:ro
+
+networks:
+  default:
+    internal: true

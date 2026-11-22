@@ -5,7 +5,7 @@
 # Just run the workflow with the tag that must be synchronised.
 
 ARG DISTRO=ghcr.io/mailu/alpine:3.20.10
-FROM $DISTRO as system
+FROM $DISTRO as runtime
 
 ENV TZ=Etc/UTC LANG=C.UTF-8
 
@@ -15,13 +15,42 @@ ARG MAILU_GID=1000
 RUN set -euxo pipefail \
   ; addgroup -Sg ${MAILU_GID} mailu \
   ; adduser -Sg ${MAILU_UID} -G mailu -h /app -g "mailu app" -s /bin/bash mailu \
-  ; apk add --no-cache bash ca-certificates curl python3 tzdata \
-  ; ! [[ "$(uname -m)" == x86_64 ]] \
-    || apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing hardened-malloc
+  ; apk add --no-cache bash ca-certificates curl python3 tzdata
 
 WORKDIR /app
 
 CMD /bin/bash
+
+ENV \
+  ADMIN_ADDRESS="admin" \
+  FRONT_ADDRESS="front" \
+  FTS_ATTACHMENTS_ADDRESS="tika" \
+  SMTP_ADDRESS="smtp" \
+  IMAP_ADDRESS="imap" \
+  OLETOOLS_ADDRESS="oletools" \
+  REDIS_ADDRESS="redis" \
+  ANTIVIRUS_ADDRESS="antivirus" \
+  ANTISPAM_ADDRESS="antispam" \
+  WEBMAIL_ADDRESS="webmail" \
+  WEBDAV_ADDRESS="webdav"
+
+# Front and webmail use Python and its dependencies from their own Alpine release.
+FROM runtime as web-runtime
+
+RUN set -euxo pipefail \
+  ; apk add --no-cache py3-jinja2 py3-tenacity \
+  ; if [[ "$(uname -m)" == x86_64 ]]; then \
+      printf '%s\n' '@allocator https://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories; \
+      apk add --no-cache hardened-malloc@allocator; \
+    fi
+ENV PYTHONPATH=/app/libs
+COPY libs/socrate/socrate/ /app/libs/socrate/
+
+FROM runtime as system
+
+RUN set -euxo pipefail \
+  ; ! [[ "$(uname -m)" == x86_64 ]] \
+    || apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing hardened-malloc
 
 
 # build virtual env (intermediate)
@@ -79,15 +108,4 @@ COPY --chown=root:root --from=build /app/snuffleupagus.so /usr/lib/php83/modules
 
 ENV \
   VIRTUAL_ENV=/app/venv \
-  PATH="/app/venv/bin:${PATH}" \
-  ADMIN_ADDRESS="admin" \
-  FRONT_ADDRESS="front" \
-  FTS_ATTACHMENTS_ADDRESS="tika" \
-  SMTP_ADDRESS="smtp" \
-  IMAP_ADDRESS="imap" \
-  OLETOOLS_ADDRESS="oletools" \
-  REDIS_ADDRESS="redis" \
-  ANTIVIRUS_ADDRESS="antivirus" \
-  ANTISPAM_ADDRESS="antispam" \
-  WEBMAIL_ADDRESS="webmail" \
-  WEBDAV_ADDRESS="webdav"
+  PATH="/app/venv/bin:${PATH}"

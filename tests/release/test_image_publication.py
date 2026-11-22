@@ -7,6 +7,7 @@ import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+WEB_TARGETS = (("front", "nginx", "3.22.8"), ("webmail", "webmail", "3.24.3"))
 
 
 class PublicationTest(unittest.TestCase):
@@ -22,10 +23,11 @@ class PublicationTest(unittest.TestCase):
                     ["docker", "buildx", "bake", "-f", "tests/build-ci.hcl", "--print"],
                     cwd=ROOT, env=env, text=True, stderr=subprocess.DEVNULL))
                 self.assertEqual(plan["group"]["default"]["targets"], ["admin", "front", "webmail"])
-                for target, image in (("front", "nginx"), ("webmail", "webmail")):
+                for target, image, distro in WEB_TARGETS:
                     self.assertEqual(plan["target"][target]["platforms"], platforms.split(","))
                     self.assertIn(f"ghcr.io/fork/mailu-{image}:2024.06-build-123",
                                   plan["target"][target]["tags"])
+                    self.assert_web_base(plan, target, distro, platforms.split(","))
                 admin = plan["target"]["admin"]
                 self.assertEqual(set(admin["platforms"]), set(platforms.split(",")))
                 self.assertEqual(admin["contexts"], {
@@ -37,6 +39,26 @@ class PublicationTest(unittest.TestCase):
                     "ghcr.io/fork/mailu-admin:2024.06.67-build-123",
                     "ghcr.io/fork/mailu-admin:2024.06-build-123",
                 })
+
+    def assert_web_base(self, plan, target, distro, platforms):
+        self.assertEqual(plan["target"][target]["contexts"]["base"], f"target:{target}-base")
+        base = plan["target"][f"{target}-base"]
+        self.assertEqual(base["context"].rstrip("/"), "core/base")
+        self.assertEqual(base["target"], "web-runtime")
+        self.assertEqual(base["args"]["DISTRO"], f"ghcr.io/mailu/alpine:{distro}")
+        self.assertEqual(base["platforms"], platforms)
+
+    @unittest.skipUnless(shutil.which("docker"), "Docker Buildx is required for Bake plan validation")
+    def test_local_bake_uses_web_bases_and_local_admin_assets(self):
+        plan = json.loads(subprocess.check_output(
+            ["docker", "buildx", "bake", "-f", "tests/build.hcl", "--print", "admin", "front", "webmail"],
+            cwd=ROOT, text=True, stderr=subprocess.DEVNULL))
+        for target, _, distro in WEB_TARGETS:
+            self.assert_web_base(plan, target, distro, ["linux/amd64"])
+        self.assertEqual(plan["target"]["admin"]["contexts"], {
+            "base": "target:base", "assets": "target:assets",
+        })
+        self.assertNotIn("DISTRO", plan["target"]["base"]["args"])
 
 
 if __name__ == "__main__":
